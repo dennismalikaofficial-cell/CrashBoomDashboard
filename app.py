@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import requests
 
 # Safely handle MetaTrader5 import for Linux Cloud hosting
 try:
@@ -8,7 +9,6 @@ try:
 except ImportError:
     MT5_AVAILABLE = False
 
-# Page Configuration
 st.set_page_config(
     page_title="Crash & Boom Signal Command Center",
     page_icon="📈",
@@ -20,57 +20,90 @@ MAGIC_NUMBER = 998877
 st.title("⚡ Crash & Boom Manual-Hybrid Signal Dashboard")
 st.markdown("---")
 
-# Sidebar: MT5 Account Login Form
-st.sidebar.header("🔐 MT5 Account Login")
-
-if not MT5_AVAILABLE:
-    st.sidebar.info("☁️ Running in Cloud Mode (MT5 terminal runs locally on Windows).")
-
-with st.sidebar.form("mt5_login_form"):
-    mt5_login = st.number_input("Account Login ID", min_value=1, step=1, value=12345678)
-    mt5_password = st.text_input("Password", type="password")
-    mt5_server = st.text_input("Broker Server", placeholder="e.g., Deriv-Demo")
-    submit_login = st.form_submit_button("Connect & Login to MT5")
-
-if submit_login:
-    if not MT5_AVAILABLE:
-        st.sidebar.warning("Direct MT5 login requires running on your local Windows PC or via a Cloud Bridge.")
-    else:
-        # Initialize and attempt login with provided credentials
-        if not mt5.initialize(login=int(mt5_login), password=mt5_password, server=mt5_server):
-            st.sidebar.error(f"Connection/Login Failed! Error: {mt5.last_error()}")
-        else:
-            account_info = mt5.account_info()
-            if account_info is not None:
-                st.sidebar.success(f"Logged in as {account_info.name}")
-                st.sidebar.json({
-                    "Login": account_info.login,
-                    "Server": account_info.server,
-                    "Balance": account_info.balance,
-                    "Equity": account_info.equity
-                })
-            else:
-                st.sidebar.warning("Initialized, but could not fetch account details.")
+# Sidebar: Cloud Bridge Configuration
+st.sidebar.header("🌐 Cloud-to-PC Bridge")
+bridge_url = st.sidebar.text_input("Ngrok Tunnel URL", placeholder="https://xxxx.ngrok-free.app").strip().rstrip("/")
+bridge_secret = st.sidebar.text_input("Bridge Secret Key", value="dennis_secret_998877", type="password")
 
 # Main Dashboard Layout
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("🎯 Active Instrument Watchlist")
-    symbols = ["Boom 1000 Index", "Crash 1000 Index", "Boom 500 Index", "Crash 500 Index"]
+    symbols = ["Boom 1000 Index", "Crash 1000 Index", "Boom 500 Index", "Crash 500 Index", "Step Index", "Volatility 75 Index"]
     selected_symbol = st.selectbox("Select Synthetic Index", symbols)
 
 with col2:
-    st.subheader("⚙️ Execution Parameters")
-    lot_size = st.number_input("Lot Size", min_value=0.20, max_value=50.0, value=0.20, step=0.01)
+    st.subheader("⚙️ Scalp Risk Parameters")
+    lot_size = st.number_input("Lot Size", min_value=0.01, max_value=50.0, value=0.20, step=0.01)
+    c1, c2 = st.columns(2)
+    sl_dollars = c1.number_input("Stop Loss ($)", min_value=0.05, max_value=50.0, value=0.30, step=0.05)
+    tp_dollars = c2.number_input("Take Profit ($)", min_value=0.05, max_value=50.0, value=0.50, step=0.05)
     st.info(f"Assigned Magic Number: **{MAGIC_NUMBER}** (Isolated from automated EAs)")
 
+# Live Bridge Telemetry
 st.markdown("---")
-st.subheader("📊 Signal Feed & Execution Panel")
-st.write("Waiting for market ticks and signal conditions...")
+st.subheader("📡 Live MT5 Terminal Telemetry")
 
-if st.button("Execute Manual Scalp Entry"):
-    if not MT5_AVAILABLE:
-        st.info("Cloud Trigger Queued: Waiting for local Windows MT5 bridge to pick up signal.")
-    else:
-        st.warning("Manual execution hook ready. Link order send function to MT5.")
+if bridge_url:
+    if st.button("🔄 Sync Live Account & Tick Data"):
+        try:
+            res = requests.get(
+                f"{bridge_url}/status",
+                params={"secret": bridge_secret, "symbol": selected_symbol},
+                headers={"ngrok-skip-browser-warning": "true"},
+                timeout=5
+            ).json()
+
+            if res.get("connected"):
+                st.sidebar.success(f"Connected: {res['login']} ({res['server']})")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Balance", f"${res['balance']:.2f}")
+                m2.metric("Equity", f"${res['equity']:.2f}")
+                m3.metric(f"{selected_symbol} Bid", f"{res['bid']}")
+                m4.metric(f"{selected_symbol} Ask", f"{res['ask']}")
+            else:
+                st.error(f"Bridge Error: {res}")
+        except Exception as e:
+            st.error(f"Could not reach Windows PC bridge: {e}")
+else:
+    st.info("Paste your active Ngrok URL in the left sidebar to link your local Windows MT5 terminal.")
+
+# Execution Panel
+st.markdown("---")
+st.subheader("🚀 Manual Scalp Execution")
+
+btn_col1, btn_col2 = st.columns(2)
+
+def send_scalp_order(direction):
+    if not bridge_url:
+        st.warning("Enter your Ngrok URL in the sidebar first.")
+        return
+    try:
+        payload = {
+            "secret": bridge_secret,
+            "symbol": selected_symbol,
+            "action": direction,
+            "lot": lot_size,
+            "sl_dollars": sl_dollars,
+            "tp_dollars": tp_dollars
+        }
+        res = requests.post(
+            f"{bridge_url}/trade",
+            json=payload,
+            headers={"ngrok-skip-browser-warning": "true"},
+            timeout=5
+        ).json()
+
+        if res.get("status") == "success":
+            st.success(f"✅ {direction} Executed! Ticket #{res['ticket']} @ {res['price']} | SL: {res['sl']} | TP: {res['tp']}")
+        else:
+            st.error(f"❌ Execution Failed: {res.get('message')}")
+    except Exception as e:
+        st.error(f"Connection Error: {e}")
+
+if btn_col1.button("🟢 BUY SCALP", use_container_width=True):
+    send_scalp_order("BUY")
+
+if btn_col2.button("🔴 SELL SCALP", use_container_width=True):
+    send_scalp_order("SELL")
