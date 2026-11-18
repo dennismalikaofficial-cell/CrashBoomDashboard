@@ -5,8 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="Malika Synthetic Edge: Crash & Boom Command", page_icon="📈", layout="wide")
 
 # --- HARDCODED PERMANENT TUNNEL URL ---
-PERMANENT_TUNNEL_URL = "https://your-pc-name.your-tailnet.ts.net"  # Replace with your Tailscale Funnel URL
-
+PERMANENT_TUNNEL_URL = "https://desktop-ai0n2q3.tailc88f10.ts.net"
 st.sidebar.header("🔐 MT5 Account Login")
 account_mode = st.sidebar.radio("Account Environment", ["DEMO", "LIVE"], horizontal=True)
 
