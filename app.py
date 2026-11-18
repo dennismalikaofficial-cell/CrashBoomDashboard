@@ -2,13 +2,38 @@ import streamlit as st
 import requests
 import pandas as pd
 
-st.set_page_config(page_title="Crash & Boom Signal Command", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Malika Synthetic Edge: Crash & Boom Command", page_icon="📈", layout="wide")
 
-st.sidebar.header("🌐 Cloud-to-PC Bridge")
-tunnel_url = st.sidebar.text_input("Ngrok / Cloudflare Tunnel URL", placeholder="https://xxxx.trycloudflare.com").rstrip("/")
+# --- HARDCODED PERMANENT TUNNEL URL (No more pasting URLs!) ---
+PERMANENT_TUNNEL_URL = "https://your-pc-name.your-tailnet.ts.net"  # Replace with your Tailscale Funnel URL
+
+st.sidebar.header("🔐 MT5 Account Login")
+mt5_login = st.sidebar.number_input("Account ID", value=41028777, step=1)
+mt5_password = st.sidebar.text_input("MT5 Password", type="password")
+mt5_server = st.sidebar.text_input("Server Name", value="Deriv-Demo")
 secret_key = st.sidebar.text_input("Bridge Secret Key", value="dennis_secret_998877", type="password")
 
-st.title("⚡ Crash & Boom Hybrid Signal Command")
+if st.sidebar.button("🔗 Connect / Switch MT5 Account", use_container_width=True):
+    try:
+        res = requests.post(
+            f"{PERMANENT_TUNNEL_URL}/login",
+            json={
+                "secret": secret_key,
+                "login": int(mt5_login),
+                "password": mt5_password,
+                "server": mt5_server,
+            },
+            timeout=5,
+        ).json()
+        if res.get("status") == "success":
+            st.sidebar.success(res.get("message"))
+        else:
+            st.sidebar.error(res.get("message"))
+    except Exception as e:
+        st.sidebar.error(f"Connection error: {e}")
+
+st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
+st.caption("Developed by Dennis Malika — Hybrid Automated & Manual Scalping Suite")
 
 col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 with col1:
@@ -30,12 +55,9 @@ st.subheader("🎛️ Execution Mode Control")
 mode_col1, mode_col2 = st.columns(2)
 
 def update_mode(auto_flag: bool):
-    if not tunnel_url:
-        st.warning("Enter your Tunnel URL in the left sidebar first.")
-        return
     try:
         res = requests.post(
-            f"{tunnel_url}/set_mode",
+            f"{PERMANENT_TUNNEL_URL}/set_mode",
             json={
                 "secret": secret_key,
                 "auto_mode": auto_flag,
@@ -68,110 +90,106 @@ st.subheader("📡 Live MT5 Telemetry & Signal Sprayer")
 if st.button("🔄 Sync Live Account, Signals & Tick Data"):
     pass
 
-if tunnel_url and secret_key:
-    try:
-        resp = requests.get(
-            f"{tunnel_url}/status",
-            params={"secret": secret_key, "symbol": symbol},
-            timeout=5,
-        ).json()
+try:
+    resp = requests.get(
+        f"{PERMANENT_TUNNEL_URL}/status",
+        params={"secret": secret_key, "symbol": symbol},
+        timeout=5,
+    ).json()
 
-        if resp.get("status") == "connected":
-            st.sidebar.success(f"Connected: {resp['login']} ({resp['server']})")
-            active_auto = resp.get("auto_mode", False)
+    if resp.get("status") == "connected":
+        st.sidebar.success(f"Connected: {resp['login']} ({resp['server']})")
+        active_auto = resp.get("auto_mode", False)
 
-            if active_auto:
-                st.success("🟢 CURRENT MODE: **ALLOW AUTOMATICALLY** (Bot executes signals automatically)")
-            else:
-                st.warning("🟡 CURRENT MODE: **TRADE MANUALLY** (Bot sprays signals; you click Buy/Sell)")
-
-            # Prominent Signal Sprayer Banner
-            sig_text = resp.get("latest_signal", "SCANNING...")
-            sig_action = resp.get("signal_action", "WAIT")
-            if sig_action == "BUY":
-                st.success(f"📣 LIVE SIGNAL: **{sig_text}**")
-            elif sig_action == "SELL":
-                st.error(f"📣 LIVE SIGNAL: **{sig_text}**")
-            else:
-                st.info(f"📣 MARKET STATUS: **{sig_text}**")
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Balance", f"${resp['balance']:.2f}")
-            m2.metric("Equity", f"${resp['equity']:.2f}")
-            m3.metric(f"{symbol} Bid", f"{resp['bid']:.4f}")
-            m4.metric(f"{symbol} Ask", f"{resp['ask']:.4f}")
-
-            # Manual Scalp Buttons
-            st.divider()
-            st.subheader("🚀 Manual Scalp Execution")
-            b1, b2, b3 = st.columns([2, 2, 1])
-
-            with b1:
-                if st.button("🟢 BUY SCALP", use_container_width=True):
-                    t_res = requests.post(
-                        f"{tunnel_url}/trade",
-                        json={
-                            "secret": secret_key,
-                            "symbol": symbol,
-                            "action": "BUY",
-                            "lot": lot_size,
-                            "sl_dollars": sl_dollars,
-                            "tp_dollars": tp_dollars,
-                        },
-                        timeout=6,
-                    ).json()
-                    if t_res.get("status") == "success":
-                        st.success(f"✅ BUY Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
-                    else:
-                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
-
-            with b2:
-                if st.button("🔴 SELL SCALP", use_container_width=True):
-                    t_res = requests.post(
-                        f"{tunnel_url}/trade",
-                        json={
-                            "secret": secret_key,
-                            "symbol": symbol,
-                            "action": "SELL",
-                            "lot": lot_size,
-                            "sl_dollars": sl_dollars,
-                            "tp_dollars": tp_dollars,
-                        },
-                        timeout=6,
-                    ).json()
-                    if t_res.get("status") == "success":
-                        st.success(f"✅ SELL Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
-                    else:
-                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
-
-            with b3:
-                if st.button("🛑 CLOSE ALL", use_container_width=True):
-                    c_res = requests.post(
-                        f"{tunnel_url}/close_all",
-                        json={"secret": secret_key},
-                        timeout=5,
-                    ).json()
-                    st.info(f"Closed {c_res.get('closed', 0)} position(s).")
-
-            # Active Positions & Signal History Log
-            col_pos, col_hist = st.columns(2)
-            with col_pos:
-                st.markdown("**📊 Active Manual/Bot Positions (Magic 998877)**")
-                trades = resp.get("open_trades", [])
-                if trades:
-                    st.dataframe(pd.DataFrame(trades), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No open positions under Magic 998877.")
-
-            with col_hist:
-                st.markdown("**📜 Recent Sprayed Signals**")
-                history = resp.get("signal_history", [])
-                if history:
-                    for item in history:
-                        st.code(item, language=None)
-                else:
-                    st.caption("Signals will appear here as new M1 bars form.")
+        if active_auto:
+            st.success("🟢 CURRENT MODE: **ALLOW AUTOMATICALLY** (Bot executes signals automatically)")
         else:
-            st.sidebar.error(resp.get("message", "Connection error"))
-    except Exception as e:
-        st.error(f"Could not reach Windows PC bridge: {e}")
+            st.warning("🟡 CURRENT MODE: **TRADE MANUALLY** (Bot sprays signals; you click Buy/Sell)")
+
+        sig_text = resp.get("latest_signal", "SCANNING...")
+        sig_action = resp.get("signal_action", "WAIT")
+        if sig_action == "BUY":
+            st.success(f"📣 LIVE SIGNAL: **{sig_text}**")
+        elif sig_action == "SELL":
+            st.error(f"📣 LIVE SIGNAL: **{sig_text}**")
+        else:
+            st.info(f"📣 MARKET STATUS: **{sig_text}**")
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Balance", f"${resp['balance']:.2f}")
+        m2.metric("Equity", f"${resp['equity']:.2f}")
+        m3.metric(f"{symbol} Bid", f"{resp['bid']:.4f}")
+        m4.metric(f"{symbol} Ask", f"{resp['ask']:.4f}")
+
+        st.divider()
+        st.subheader("🚀 Manual Scalp Execution")
+        b1, b2, b3 = st.columns([2, 2, 1])
+
+        with b1:
+            if st.button("🟢 BUY SCALP", use_container_width=True):
+                t_res = requests.post(
+                    f"{PERMANENT_TUNNEL_URL}/trade",
+                    json={
+                        "secret": secret_key,
+                        "symbol": symbol,
+                        "action": "BUY",
+                        "lot": lot_size,
+                        "sl_dollars": sl_dollars,
+                        "tp_dollars": tp_dollars,
+                    },
+                    timeout=6,
+                ).json()
+                if t_res.get("status") == "success":
+                    st.success(f"✅ BUY Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
+                else:
+                    st.error(f"❌ Execution Failed: {t_res.get('message')}")
+
+        with b2:
+            if st.button("🔴 SELL SCALP", use_container_width=True):
+                t_res = requests.post(
+                    f"{PERMANENT_TUNNEL_URL}/trade",
+                    json={
+                        "secret": secret_key,
+                        "symbol": symbol,
+                        "action": "SELL",
+                        "lot": lot_size,
+                        "sl_dollars": sl_dollars,
+                        "tp_dollars": tp_dollars,
+                    },
+                    timeout=6,
+                ).json()
+                if t_res.get("status") == "success":
+                    st.success(f"✅ SELL Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
+                else:
+                    st.error(f"❌ Execution Failed: {t_res.get('message')}")
+
+        with b3:
+            if st.button("🛑 CLOSE ALL", use_container_width=True):
+                c_res = requests.post(
+                    f"{PERMANENT_TUNNEL_URL}/close_all",
+                    json={"secret": secret_key},
+                    timeout=5,
+                ).json()
+                st.info(f"Closed {c_res.get('closed', 0)} position(s).")
+
+        col_pos, col_hist = st.columns(2)
+        with col_pos:
+            st.markdown("**📊 Active Manual/Bot Positions (Magic 998877)**")
+            trades = resp.get("open_trades", [])
+            if trades:
+                st.dataframe(pd.DataFrame(trades), use_container_width=True, hide_index=True)
+            else:
+                st.caption("No open positions under Magic 998877.")
+
+        with col_hist:
+            st.markdown("**📜 Recent Sprayed Signals**")
+            history = resp.get("signal_history", [])
+            if history:
+                for item in history:
+                    st.code(item, language=None)
+            else:
+                st.caption("Signals will appear here as new M1 bars form.")
+    else:
+        st.sidebar.error(resp.get("message", "Connection error"))
+except Exception as e:
+    st.error(f"Could not reach PC bridge via Tailscale: {e}")
