@@ -1,109 +1,177 @@
 import streamlit as st
-import pandas as pd
 import requests
+import pandas as pd
 
-# Safely handle MetaTrader5 import for Linux Cloud hosting
-try:
-    import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
-except ImportError:
-    MT5_AVAILABLE = False
+st.set_page_config(page_title="Crash & Boom Signal Command", page_icon="📈", layout="wide")
 
-st.set_page_config(
-    page_title="Crash & Boom Signal Command Center",
-    page_icon="📈",
-    layout="wide"
-)
-
-MAGIC_NUMBER = 998877
-
-st.title("⚡ Crash & Boom Manual-Hybrid Signal Dashboard")
-st.markdown("---")
-
-# Sidebar: Cloud Bridge Configuration
 st.sidebar.header("🌐 Cloud-to-PC Bridge")
-bridge_url = st.sidebar.text_input("Ngrok Tunnel URL", placeholder="https://xxxx.ngrok-free.app").strip().rstrip("/")
-bridge_secret = st.sidebar.text_input("Bridge Secret Key", value="dennis_secret_998877", type="password")
+tunnel_url = st.sidebar.text_input("Ngrok / Cloudflare Tunnel URL", placeholder="https://xxxx.trycloudflare.com").rstrip("/")
+secret_key = st.sidebar.text_input("Bridge Secret Key", value="dennis_secret_998877", type="password")
 
-# Main Dashboard Layout
-col1, col2 = st.columns(2)
+st.title("⚡ Crash & Boom Hybrid Signal Command")
 
+col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 with col1:
-    st.subheader("🎯 Active Instrument Watchlist")
-    symbols = ["Boom 1000 Index", "Crash 1000 Index", "Boom 500 Index", "Crash 500 Index", "Step Index", "Volatility 75 Index"]
-    selected_symbol = st.selectbox("Select Synthetic Index", symbols)
-
+    symbol = st.selectbox(
+        "Select Synthetic Index",
+        ["Boom 1000 Index", "Crash 1000 Index", "Boom 500 Index", "Crash 500 Index", "Step Index", "Volatility 75 Index"],
+    )
 with col2:
-    st.subheader("⚙️ Scalp Risk Parameters")
-    lot_size = st.number_input("Lot Size", min_value=0.01, max_value=50.0, value=0.20, step=0.01)
-    c1, c2 = st.columns(2)
-    sl_dollars = c1.number_input("Stop Loss ($)", min_value=0.05, max_value=50.0, value=0.30, step=0.05)
-    tp_dollars = c2.number_input("Take Profit ($)", min_value=0.05, max_value=50.0, value=0.50, step=0.05)
-    st.info(f"Assigned Magic Number: **{MAGIC_NUMBER}** (Isolated from automated EAs)")
+    lot_size = st.number_input("Lot Size", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
+with col3:
+    sl_dollars = st.number_input("Stop Loss ($)", min_value=0.10, max_value=500.0, value=0.30, step=0.10)
+with col4:
+    tp_dollars = st.number_input("Take Profit ($)", min_value=0.10, max_value=500.0, value=0.50, step=0.10)
 
-# Live Bridge Telemetry
-st.markdown("---")
-st.subheader("📡 Live MT5 Terminal Telemetry")
+st.info("Assigned Magic Number: **998877** (Isolated from automated EAs | Python USD SL/TP Watcher Active)")
 
-if bridge_url:
-    if st.button("🔄 Sync Live Account & Tick Data"):
-        try:
-            res = requests.get(
-                f"{bridge_url}/status",
-                params={"secret": bridge_secret, "symbol": selected_symbol},
-                headers={"ngrok-skip-browser-warning": "true"},
-                timeout=5
-            ).json()
+# --- Execution Mode Toggle Buttons ---
+st.subheader("🎛️ Execution Mode Control")
+mode_col1, mode_col2 = st.columns(2)
 
-            if res.get("connected"):
-                st.sidebar.success(f"Connected: {res['login']} ({res['server']})")
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Balance", f"${res['balance']:.2f}")
-                m2.metric("Equity", f"${res['equity']:.2f}")
-                m3.metric(f"{selected_symbol} Bid", f"{res['bid']}")
-                m4.metric(f"{selected_symbol} Ask", f"{res['ask']}")
-            else:
-                st.error(f"Bridge Error: {res}")
-        except Exception as e:
-            st.error(f"Could not reach Windows PC bridge: {e}")
-else:
-    st.info("Paste your active Ngrok URL in the left sidebar to link your local Windows MT5 terminal.")
-
-# Execution Panel
-st.markdown("---")
-st.subheader("🚀 Manual Scalp Execution")
-
-btn_col1, btn_col2 = st.columns(2)
-
-def send_scalp_order(direction):
-    if not bridge_url:
-        st.warning("Enter your Ngrok URL in the sidebar first.")
+def update_mode(auto_flag: bool):
+    if not tunnel_url:
+        st.warning("Enter your Tunnel URL in the left sidebar first.")
         return
     try:
-        payload = {
-            "secret": bridge_secret,
-            "symbol": selected_symbol,
-            "action": direction,
-            "lot": lot_size,
-            "sl_dollars": sl_dollars,
-            "tp_dollars": tp_dollars
-        }
         res = requests.post(
-            f"{bridge_url}/trade",
-            json=payload,
-            headers={"ngrok-skip-browser-warning": "true"},
-            timeout=5
+            f"{tunnel_url}/set_mode",
+            json={
+                "secret": secret_key,
+                "auto_mode": auto_flag,
+                "symbol": symbol,
+                "lot": lot_size,
+                "sl_dollars": sl_dollars,
+                "tp_dollars": tp_dollars,
+            },
+            timeout=5,
+        ).json()
+        if res.get("status") == "success":
+            st.session_state["auto_mode"] = auto_flag
+        else:
+            st.error(res.get("message", "Failed to update mode"))
+    except Exception as e:
+        st.error(f"Bridge Error: {e}")
+
+with mode_col1:
+    if st.button("🤖 ALLOW AUTOMATICALLY", use_container_width=True, type="primary"):
+        update_mode(True)
+
+with mode_col2:
+    if st.button("🖐️ TRADE MANUALLY", use_container_width=True):
+        update_mode(False)
+
+# --- Sync Telemetry & Live Signal Sprayer ---
+st.divider()
+st.subheader("📡 Live MT5 Telemetry & Signal Sprayer")
+
+if st.button("🔄 Sync Live Account, Signals & Tick Data"):
+    pass
+
+if tunnel_url and secret_key:
+    try:
+        resp = requests.get(
+            f"{tunnel_url}/status",
+            params={"secret": secret_key, "symbol": symbol},
+            timeout=5,
         ).json()
 
-        if res.get("status") == "success":
-            st.success(f"✅ {direction} Executed! Ticket #{res['ticket']} @ {res['price']} | SL: {res['sl']} | TP: {res['tp']}")
+        if resp.get("status") == "connected":
+            st.sidebar.success(f"Connected: {resp['login']} ({resp['server']})")
+            active_auto = resp.get("auto_mode", False)
+
+            if active_auto:
+                st.success("🟢 CURRENT MODE: **ALLOW AUTOMATICALLY** (Bot executes signals automatically)")
+            else:
+                st.warning("🟡 CURRENT MODE: **TRADE MANUALLY** (Bot sprays signals; you click Buy/Sell)")
+
+            # Prominent Signal Sprayer Banner
+            sig_text = resp.get("latest_signal", "SCANNING...")
+            sig_action = resp.get("signal_action", "WAIT")
+            if sig_action == "BUY":
+                st.success(f"📣 LIVE SIGNAL: **{sig_text}**")
+            elif sig_action == "SELL":
+                st.error(f"📣 LIVE SIGNAL: **{sig_text}**")
+            else:
+                st.info(f"📣 MARKET STATUS: **{sig_text}**")
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Balance", f"${resp['balance']:.2f}")
+            m2.metric("Equity", f"${resp['equity']:.2f}")
+            m3.metric(f"{symbol} Bid", f"{resp['bid']:.4f}")
+            m4.metric(f"{symbol} Ask", f"{resp['ask']:.4f}")
+
+            # Manual Scalp Buttons
+            st.divider()
+            st.subheader("🚀 Manual Scalp Execution")
+            b1, b2, b3 = st.columns([2, 2, 1])
+
+            with b1:
+                if st.button("🟢 BUY SCALP", use_container_width=True):
+                    t_res = requests.post(
+                        f"{tunnel_url}/trade",
+                        json={
+                            "secret": secret_key,
+                            "symbol": symbol,
+                            "action": "BUY",
+                            "lot": lot_size,
+                            "sl_dollars": sl_dollars,
+                            "tp_dollars": tp_dollars,
+                        },
+                        timeout=6,
+                    ).json()
+                    if t_res.get("status") == "success":
+                        st.success(f"✅ BUY Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
+                    else:
+                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
+
+            with b2:
+                if st.button("🔴 SELL SCALP", use_container_width=True):
+                    t_res = requests.post(
+                        f"{tunnel_url}/trade",
+                        json={
+                            "secret": secret_key,
+                            "symbol": symbol,
+                            "action": "SELL",
+                            "lot": lot_size,
+                            "sl_dollars": sl_dollars,
+                            "tp_dollars": tp_dollars,
+                        },
+                        timeout=6,
+                    ).json()
+                    if t_res.get("status") == "success":
+                        st.success(f"✅ SELL Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
+                    else:
+                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
+
+            with b3:
+                if st.button("🛑 CLOSE ALL", use_container_width=True):
+                    c_res = requests.post(
+                        f"{tunnel_url}/close_all",
+                        json={"secret": secret_key},
+                        timeout=5,
+                    ).json()
+                    st.info(f"Closed {c_res.get('closed', 0)} position(s).")
+
+            # Active Positions & Signal History Log
+            col_pos, col_hist = st.columns(2)
+            with col_pos:
+                st.markdown("**📊 Active Manual/Bot Positions (Magic 998877)**")
+                trades = resp.get("open_trades", [])
+                if trades:
+                    st.dataframe(pd.DataFrame(trades), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No open positions under Magic 998877.")
+
+            with col_hist:
+                st.markdown("**📜 Recent Sprayed Signals**")
+                history = resp.get("signal_history", [])
+                if history:
+                    for item in history:
+                        st.code(item, language=None)
+                else:
+                    st.caption("Signals will appear here as new M1 bars form.")
         else:
-            st.error(f"❌ Execution Failed: {res.get('message')}")
+            st.sidebar.error(resp.get("message", "Connection error"))
     except Exception as e:
-        st.error(f"Connection Error: {e}")
-
-if btn_col1.button("🟢 BUY SCALP", use_container_width=True):
-    send_scalp_order("BUY")
-
-if btn_col2.button("🔴 SELL SCALP", use_container_width=True):
-    send_scalp_order("SELL")
+        st.error(f"Could not reach Windows PC bridge: {e}")
