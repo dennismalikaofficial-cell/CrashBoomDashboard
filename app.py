@@ -4,16 +4,21 @@ import pandas as pd
 
 st.set_page_config(page_title="Malika Synthetic Edge: Crash & Boom Command", page_icon="📈", layout="wide")
 
-# --- HARDCODED PERMANENT TUNNEL URL (No more pasting URLs!) ---
+# --- HARDCODED PERMANENT TUNNEL URL ---
 PERMANENT_TUNNEL_URL = "https://your-pc-name.your-tailnet.ts.net"  # Replace with your Tailscale Funnel URL
 
 st.sidebar.header("🔐 MT5 Account Login")
+account_mode = st.sidebar.radio("Account Environment", ["DEMO", "LIVE"], horizontal=True)
+
+# Smart defaults based on selection
+default_server = "Deriv-Demo" if account_mode == "DEMO" else "DerivSVG-Server"
+
 mt5_login = st.sidebar.number_input("Account ID", value=41028777, step=1)
 mt5_password = st.sidebar.text_input("MT5 Password", type="password")
-mt5_server = st.sidebar.text_input("Server Name", value="Deriv-Demo")
+mt5_server = st.sidebar.text_input("Server Name", value=default_server, help="e.g., Deriv-Demo or DerivSVG-Server / DerivSVG-Server-02")
 secret_key = st.sidebar.text_input("Bridge Secret Key", value="dennis_secret_998877", type="password")
 
-if st.sidebar.button("🔗 Connect / Switch MT5 Account", use_container_width=True):
+if st.sidebar.button(f"🔗 Connect to {account_mode} Account", use_container_width=True):
     try:
         res = requests.post(
             f"{PERMANENT_TUNNEL_URL}/login",
@@ -21,6 +26,7 @@ if st.sidebar.button("🔗 Connect / Switch MT5 Account", use_container_width=Tr
                 "secret": secret_key,
                 "login": int(mt5_login),
                 "password": mt5_password,
+                "account_type": account_mode,
                 "server": mt5_server,
             },
             timeout=5,
@@ -48,7 +54,7 @@ with col3:
 with col4:
     tp_dollars = st.number_input("Take Profit ($)", min_value=0.10, max_value=500.0, value=0.50, step=0.10)
 
-st.info("Assigned Magic Number: **998877** (Isolated from automated EAs | Python USD SL/TP Watcher Active)")
+st.info(f"Active Mode: **{account_mode}** | Assigned Magic Number: **998877** (Python USD SL/TP Watcher Active)")
 
 # --- Execution Mode Toggle Buttons ---
 st.subheader("🎛️ Execution Mode Control")
