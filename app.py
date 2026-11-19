@@ -226,10 +226,10 @@ if tunnel_url and secret_key:
             sig_text = resp.get("latest_signal", "SCANNING...")
             sig_action = resp.get("signal_action", "WAIT")
 
-            d1, d2, d3 = st.columns(3)
+            d1, d2 = st.columns(2)
             d1.metric(f"{timeframe} Market Direction", direction)
             d2.metric("RSI (14)", f"{rsi_val}")
-            d3.metric("Spike Environment", spike_env)
+            st.caption(f"🎯 **Spike Environment:** {spike_env}")
 
             if sig_action == "BUY":
                 st.success(f"📣 LIVE SPIKE SIGNAL: **{sig_text}**")
