@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import requests
 import pandas as pd
@@ -199,8 +200,17 @@ with mode_col2:
 st.divider()
 st.subheader(f"📡 Live MT5 Telemetry & {timeframe} Direction Analysis")
 
-if st.button("🔄 Sync Live Account, Direction & Tick Data"):
-    pass
+sync_col, refresh_col = st.columns([2, 2])
+with sync_col:
+    if st.button("🔄 Sync Live Account, Direction & Tick Data", use_container_width=True):
+        pass
+with refresh_col:
+    refresh_choice = st.selectbox(
+        "Auto-Refresh",
+        ["Off", "5s", "10s"],
+        index=0,
+        label_visibility="collapsed",
+    )
 
 if tunnel_url and secret_key:
     try:
@@ -328,3 +338,9 @@ if tunnel_url and secret_key:
             st.sidebar.error(resp.get("message", "Connection error"))
     except Exception as e:
         st.error(f"Could not reach Windows PC bridge: {e}")
+
+# --- Optional Auto-Refresh Loop ---
+if refresh_choice in ("5s", "10s") and tunnel_url and secret_key:
+    delay = 5 if refresh_choice == "5s" else 10
+    time.sleep(delay)
+    st.rerun()
