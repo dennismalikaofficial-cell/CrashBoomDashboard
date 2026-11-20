@@ -1,11 +1,7 @@
-import time
-import streamlit as st
 import requests
 import pandas as pd
-
-DEFAULT_TUNNEL_URL = "https://desktop-ai0n2q3.tailc88f10.ts.net"
-DEFAULT_SECRET = "dennis_secret_998877"
-TIMEOUT_SEC = 15
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(
     page_title="Malika Synthetic Edge: Crash & Boom Command",
@@ -13,334 +9,282 @@ st.set_page_config(
     layout="wide",
 )
 
-# Initialize session defaults
-if "saved_loaded" not in st.session_state:
-    st.session_state["saved_loaded"] = False
-if "login_id" not in st.session_state:
-    st.session_state["login_id"] = 41028777
-if "mt5_password" not in st.session_state:
-    st.session_state["mt5_password"] = ""
-if "account_type" not in st.session_state:
-    st.session_state["account_type"] = "DEMO"
-if "server_name" not in st.session_state:
-    st.session_state["server_name"] = "Deriv-Demo"
-if "secret_key" not in st.session_state:
-    st.session_state["secret_key"] = DEFAULT_SECRET
+ALL_PRODUCTS = [
+    "Boom 1000 Index",
+    "Boom 500 Index",
+    "Boom 300 Index",
+    "Crash 1000 Index",
+    "Crash 500 Index",
+    "Crash 300 Index",
+]
 
-# --- Sidebar: Bridge & Saved MT5 Account Login ---
-st.sidebar.header("🌐 Cloud-to-PC Bridge")
-tunnel_url = st.sidebar.text_input(
-    "Tailscale / Tunnel URL",
-    value=DEFAULT_TUNNEL_URL,
-).rstrip("/")
+# Sidebar: Bridge & MT5 Credentials
+with st.sidebar:
+    st.header("🌐 Cloud-to-PC Bridge")
+    tunnel_url = st.text_input(
+        "Tailscale / Tunnel URL",
+        value="https://desktop-ai0n2q3.tailc88f10.ts.net",
+    ).rstrip("/")
+    bridge_secret = st.text_input(
+        "Bridge Secret Key",
+        value="dennis_secret_998877",
+        type="password",
+    )
 
-secret_key = st.sidebar.text_input(
-    "Bridge Secret Key",
-    value=st.session_state["secret_key"],
-    type="password",
-)
-st.session_state["secret_key"] = secret_key
+    st.divider()
+    st.header("🔐 MT5 Account Login")
+    account_env = st.radio("Account Environment", ["DEMO", "LIVE"], horizontal=True)
+    default_server = "Deriv-Demo" if account_env == "DEMO" else "Deriv-Server"
+    account_id = st.number_input("Account ID", value=41028777, step=1)
+    mt5_password = st.text_input("MT5 Password", type="password")
+    server_name = st.text_input("Broker Server", value=default_server)
+    save_login = st.checkbox("Remember Login on Local Bridge", value=True)
 
-# Fetch saved credentials once when bridge URL & secret are present
-if tunnel_url and secret_key and not st.session_state["saved_loaded"]:
-    try:
-        s_resp = requests.get(
-            f"{tunnel_url}/saved_login",
-            params={"secret": secret_key},
-            timeout=TIMEOUT_SEC,
-        ).json()
-        if s_resp.get("status") == "success" and s_resp.get("config"):
-            cfg = s_resp["config"]
-            if cfg.get("login"):
-                st.session_state["login_id"] = int(cfg["login"])
-            if cfg.get("password"):
-                st.session_state["mt5_password"] = cfg["password"]
-            if cfg.get("account_type"):
-                st.session_state["account_type"] = cfg["account_type"]
-            if cfg.get("server"):
-                st.session_state["server_name"] = cfg["server"]
-        st.session_state["saved_loaded"] = True
-    except Exception:
-        pass
-
-st.sidebar.divider()
-st.sidebar.header("🔐 MT5 Account Login")
-
-account_type = st.sidebar.radio(
-    "Account Environment",
-    ["DEMO", "LIVE"],
-    index=0 if st.session_state["account_type"] == "DEMO" else 1,
-    horizontal=True,
-)
-login_id = st.sidebar.number_input(
-    "Account ID",
-    min_value=1,
-    step=1,
-    value=int(st.session_state["login_id"]),
-)
-mt5_password = st.sidebar.text_input(
-    "MT5 Password",
-    value=st.session_state["mt5_password"],
-    type="password",
-)
-server_name = st.sidebar.text_input(
-    "Server Name",
-    value=st.session_state["server_name"],
-)
-save_login = st.sidebar.checkbox("Save / Remember Login Details", value=True)
-
-if st.sidebar.button("🔗 Connect & Save Account", use_container_width=True, type="primary"):
-    if not tunnel_url:
-        st.sidebar.warning("Enter your Tunnel URL first.")
-    else:
+    if st.button("🔌 Connect / Save MT5 Login", use_container_width=True):
         try:
-            l_res = requests.post(
+            r = requests.post(
                 f"{tunnel_url}/login",
                 json={
-                    "secret": secret_key,
-                    "login": int(login_id),
+                    "secret": bridge_secret,
+                    "login": int(account_id),
                     "password": mt5_password,
-                    "account_type": account_type,
+                    "account_type": account_env,
                     "server": server_name,
                     "save_login": save_login,
                 },
-                timeout=TIMEOUT_SEC,
-            ).json()
-            if l_res.get("status") == "success":
-                st.session_state["login_id"] = int(login_id)
-                st.session_state["mt5_password"] = mt5_password
-                st.session_state["account_type"] = account_type
-                st.session_state["server_name"] = server_name
-                st.sidebar.success(l_res.get("message", "Connected!"))
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "success":
+                st.success(data.get("message"))
             else:
-                st.sidebar.error(l_res.get("message", "Login failed"))
+                st.error(data.get("message", "Login failed"))
         except Exception as e:
-            st.sidebar.error(f"Login Bridge Error: {e}")
+            st.error(f"Bridge unreachable: {e}")
 
-# --- Main Header & Controls ---
+# Main Header
 st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
-st.caption("Smart Spike-Hunting Only • Timeframe Direction Analysis • Saved Credentials")
+st.caption("Multi-Product Smart Spike-Hunting • 1 Active Trade Per Selected Product • Cloud Synced")
 
-col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
-with col1:
-    symbol = st.selectbox(
-        "Select Synthetic Index",
-        [
-            "Boom 1000 Index",
-            "Crash 1000 Index",
-            "Boom 500 Index",
-            "Crash 500 Index",
-            "Step Index",
-            "Volatility 75 Index",
-        ],
-    )
-with col2:
-    timeframe = st.selectbox(
-        "Timeframe",
-        ["M1", "M5", "M15", "M30", "H1", "H4"],
-        index=0,
-    )
-with col3:
-    lot_size = st.number_input("Lot Size", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
-with col4:
-    sl_dollars = st.number_input("Stop Loss ($)", min_value=0.10, max_value=500.0, value=1.50, step=0.10)
-with col5:
-    tp_dollars = st.number_input("Take Profit ($)", min_value=0.10, max_value=500.0, value=2.00, step=0.10)
+# Product Selection Presets & Multi-Select Pills
+st.subheader("🎯 Select Boom & Crash Products to Hunt")
 
-is_boom = "BOOM" in symbol.upper()
-is_crash = "CRASH" in symbol.upper()
+preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
+if "selected_products" not in st.session_state:
+    st.session_state.selected_products = ["Boom 1000 Index"]
 
-if is_boom:
-    st.info("🎯 **Boom Spike Mode:** Bot hunts **BUY** spike entries only — **SELL** (counter-spike) is blocked.")
-elif is_crash:
-    st.info("🎯 **Crash Spike Mode:** Bot hunts **SELL** spike entries only — **BUY** (counter-spike) is blocked.")
-else:
-    st.info("Assigned Magic Number: **998877** | Python USD SL/TP Watcher Active")
+with preset_col1:
+    if st.button("1️⃣ Option 1: Boom 1000 Only", use_container_width=True):
+        st.session_state.selected_products = ["Boom 1000 Index"]
+with preset_col2:
+    if st.button("2️⃣ Option 2: Boom 1000 + Crash 1000", use_container_width=True):
+        st.session_state.selected_products = ["Boom 1000 Index", "Crash 1000 Index"]
+with preset_col3:
+    if st.button("🔥 All Booms (1000 / 500 / 300)", use_container_width=True):
+        st.session_state.selected_products = ["Boom 1000 Index", "Boom 500 Index", "Boom 300 Index"]
+with preset_col4:
+    if st.button("⚡ All 6 Booms & Crashes", use_container_width=True):
+        st.session_state.selected_products = ALL_PRODUCTS.copy()
 
-# --- Execution Mode Toggle Buttons ---
+selected_products = st.multiselect(
+    "Active Spike-Hunting Products (Add or remove any combination — max 1 trade per selected product):",
+    options=ALL_PRODUCTS,
+    default=st.session_state.selected_products,
+    key="selected_products",
+)
+
+if not selected_products:
+    st.warning("Select at least 1 Boom or Crash product above.")
+    selected_products = ["Boom 1000 Index"]
+
+st.info(
+    f"🛡️ **Risk & Capacity Rule:** **{len(selected_products)} product(s)** selected $\\rightarrow$ "
+    f"Max **{len(selected_products)} concurrent trade(s)** total (**1 active trade per product**, "
+    f"re-entering only when a fresh spike setup forms). Boom = **BUY only** | Crash = **SELL only**."
+)
+
+# Parameters Row
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1"], index=0)
+with c2:
+    lot_size = st.number_input("Lot Size (Per Trade)", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
+with c3:
+    sl_dollars = st.number_input("Stop Loss ($) Per Trade", min_value=0.10, max_value=1000.0, value=2.00, step=0.50)
+with c4:
+    tp_dollars = st.number_input("Take Profit ($) Per Trade", min_value=0.10, max_value=1000.0, value=2.00, step=0.50)
+
+# Execution Mode Control
 st.subheader("🎛️ Execution Mode Control")
-mode_col1, mode_col2 = st.columns(2)
+m1, m2 = st.columns(2)
+with m1:
+    if st.button("🤖 ALLOW AUTOMATICALLY", type="primary", use_container_width=True):
+        try:
+            r = requests.post(
+                f"{tunnel_url}/set_mode",
+                json={
+                    "secret": bridge_secret,
+                    "auto_mode": True,
+                    "symbols": selected_products,
+                    "timeframe": timeframe,
+                    "lot": float(lot_size),
+                    "sl_dollars": float(sl_dollars),
+                    "tp_dollars": float(tp_dollars),
+                },
+                timeout=10,
+            )
+            if r.json().get("status") == "success":
+                st.success(f"Auto-Mode ACTIVE across {len(selected_products)} product(s)!")
+        except Exception as e:
+            st.error(f"Failed to update mode: {e}")
 
-
-def update_mode(auto_flag: bool):
-    if not tunnel_url:
-        st.warning("Enter your Tunnel URL in the left sidebar first.")
-        return
-    try:
-        res = requests.post(
-            f"{tunnel_url}/set_mode",
-            json={
-                "secret": secret_key,
-                "auto_mode": auto_flag,
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "lot": lot_size,
-                "sl_dollars": sl_dollars,
-                "tp_dollars": tp_dollars,
-            },
-            timeout=TIMEOUT_SEC,
-        ).json()
-        if res.get("status") == "success":
-            st.session_state["auto_mode"] = auto_flag
-        else:
-            st.error(res.get("message", "Failed to update mode"))
-    except Exception as e:
-        st.error(f"Bridge Error: {e}")
-
-
-with mode_col1:
-    if st.button("🤖 ALLOW AUTOMATICALLY", use_container_width=True, type="primary"):
-        update_mode(True)
-
-with mode_col2:
+with m2:
     if st.button("🖐️ TRADE MANUALLY", use_container_width=True):
-        update_mode(False)
+        try:
+            r = requests.post(
+                f"{tunnel_url}/set_mode",
+                json={
+                    "secret": bridge_secret,
+                    "auto_mode": False,
+                    "symbols": selected_products,
+                    "timeframe": timeframe,
+                    "lot": float(lot_size),
+                    "sl_dollars": float(sl_dollars),
+                    "tp_dollars": float(tp_dollars),
+                },
+                timeout=10,
+            )
+            if r.json().get("status") == "success":
+                st.info("Switched to Manual Mode (Auto entries paused; USD SL/TP still active).")
+        except Exception as e:
+            st.error(f"Failed to update mode: {e}")
 
-# --- Sync Telemetry, Timeframe Direction & Signal Sprayer ---
 st.divider()
-st.subheader(f"📡 Live MT5 Telemetry & {timeframe} Direction Analysis")
 
-sync_col, refresh_col = st.columns([2, 2])
-with sync_col:
-    if st.button("🔄 Sync Live Account, Direction & Tick Data", use_container_width=True):
-        pass
-with refresh_col:
-    refresh_choice = st.selectbox(
-        "Auto-Refresh",
-        ["Off", "5s", "10s"],
-        index=0,
-        label_visibility="collapsed",
+# Telemetry & Refresh Controls
+st.subheader(f"📡 Live MT5 Multi-Product Scanner & {timeframe} Analysis")
+r1, r2 = st.columns([3, 1])
+with r1:
+    manual_sync = st.button("🔄 Sync Live Account, Multi-Product Direction & Tick Data", use_container_width=True)
+with r2:
+    refresh_choice = st.selectbox("Auto-Refresh", ["Off", "15s", "30s"], index=0, label_visibility="collapsed")
+
+if refresh_choice == "15s":
+    st_autorefresh(interval=15000, key="auto_refresh_15")
+elif refresh_choice == "30s":
+    st_autorefresh(interval=30000, key="auto_refresh_30")
+
+status_data = None
+try:
+    resp = requests.get(
+        f"{tunnel_url}/status",
+        params={
+            "secret": bridge_secret,
+            "symbols": ",".join(selected_products),
+            "timeframe": timeframe,
+        },
+        timeout=10,
+    )
+    status_data = resp.json()
+except Exception as e:
+    st.error(f"Could not reach local bridge at {tunnel_url}: {e}")
+
+if status_data and status_data.get("status") == "connected":
+    if status_data.get("auto_mode"):
+        st.success(
+            f"🟢 **CURRENT MODE: ALLOW AUTOMATICALLY** — Scanning **{len(selected_products)}** product(s) "
+            f"| Active Bot Trades: **{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)} max**"
+        )
+    else:
+        st.warning("🟡 **CURRENT MODE: TRADE MANUALLY** — Scanner active; automatic entries paused.")
+
+    # Account Metrics
+    b1, b2, b3, b4 = st.columns(4)
+    b1.metric("Balance", f"${status_data.get('balance', 0):,.2f}")
+    b2.metric("Equity", f"${status_data.get('equity', 0):,.2f}")
+    b3.metric("Selected Products", f"{len(selected_products)}")
+    b4.metric(
+        "Active Bot Slots Used",
+        f"{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)}",
     )
 
-if tunnel_url and secret_key:
-    try:
-        resp = requests.get(
-            f"{tunnel_url}/status",
-            params={"secret": secret_key, "symbol": symbol, "timeframe": timeframe},
-            timeout=TIMEOUT_SEC,
-        ).json()
+    # Multi-Product Live Scanner Table
+    st.markdown("### 📊 Live Spike Scanner Across Selected Products")
+    telemetry_map = status_data.get("symbol_telemetry", {})
+    rows = []
+    for sym in selected_products:
+        item = telemetry_map.get(sym, {})
+        rows.append({
+            "Product": sym,
+            "Allowed Side": item.get("side", "-"),
+            "Bid": item.get("bid", 0.0),
+            "Ask": item.get("ask", 0.0),
+            f"{timeframe} Trend": item.get("direction", "-"),
+            "RSI (14)": item.get("rsi", "-"),
+            "Spike Status": item.get("spike_environment", "-"),
+            "Active Trade": f"{item.get('open_count', 0)} / 1",
+        })
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-        if resp.get("status") == "connected":
-            st.sidebar.success(f"Connected: {resp['login']} ({resp['server']})")
-            active_auto = resp.get("auto_mode", False)
+    st.divider()
 
-            if active_auto:
-                st.success("🟢 CURRENT MODE: **ALLOW AUTOMATICALLY** (Bot executes smart spike setups automatically)")
+    # Manual Spike Execution for Any Selected Product
+    st.subheader("🚀 Manual Spike Execution")
+    mc1, mc2, mc3 = st.columns([2, 1, 1])
+    with mc1:
+        manual_sym = st.selectbox("Target Product for Manual Entry", selected_products)
+    is_boom_manual = "BOOM" in manual_sym.upper()
+    manual_action = "BUY" if is_boom_manual else "SELL"
+    btn_label = f"🟢 BUY SPIKE ({manual_sym})" if is_boom_manual else f"🔴 SELL SPIKE ({manual_sym})"
+
+    with mc2:
+        st.write("")
+        if st.button(btn_label, use_container_width=True):
+            tr = requests.post(
+                f"{tunnel_url}/trade",
+                json={
+                    "secret": bridge_secret,
+                    "symbol": manual_sym,
+                    "action": manual_action,
+                    "lot": float(lot_size),
+                    "sl_dollars": float(sl_dollars),
+                    "tp_dollars": float(tp_dollars),
+                },
+                timeout=10,
+            ).json()
+            if tr.get("status") == "success":
+                st.success(f"Opened {manual_action} on {manual_sym} (Ticket {tr.get('ticket')})")
             else:
-                st.warning("🟡 CURRENT MODE: **TRADE MANUALLY** (Bot sprays direction & spike signals; you execute)")
+                st.error(tr.get("message", "Order rejected"))
 
-            # Market Direction & Spike Environment Banner
-            direction = resp.get("market_direction", "SIDEWAYS")
-            rsi_val = resp.get("rsi_value", 50.0)
-            spike_env = resp.get("spike_environment", "SCANNING...")
-            sig_text = resp.get("latest_signal", "SCANNING...")
-            sig_action = resp.get("signal_action", "WAIT")
+    with mc3:
+        st.write("")
+        if st.button("🛑 CLOSE ALL BOT TRADES", use_container_width=True):
+            cl = requests.post(
+                f"{tunnel_url}/close_all",
+                json={"secret": bridge_secret},
+                timeout=10,
+            ).json()
+            st.info(f"Closed {cl.get('closed', 0)} bot position(s).")
 
-            d1, d2 = st.columns(2)
-            d1.metric(f"{timeframe} Market Direction", direction)
-            d2.metric("RSI (14)", f"{rsi_val}")
-            st.caption(f"🎯 **Spike Environment:** {spike_env}")
-
-            if sig_action == "BUY":
-                st.success(f"📣 LIVE SPIKE SIGNAL: **{sig_text}**")
-            elif sig_action == "SELL":
-                st.error(f"📣 LIVE SPIKE SIGNAL: **{sig_text}**")
-            else:
-                st.info(f"📣 ANALYSIS STATUS: **{sig_text}**")
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Balance", f"${resp['balance']:.2f}")
-            m2.metric("Equity", f"${resp['equity']:.2f}")
-            m3.metric(f"{symbol} Bid", f"{resp['bid']:.4f}")
-            m4.metric(f"{symbol} Ask", f"{resp['ask']:.4f}")
-
-            # Manual Spike Scalp Buttons (Counter-spike side disabled on Boom/Crash)
-            st.divider()
-            st.subheader("🚀 Manual Spike Execution")
-            b1, b2, b3 = st.columns([2, 2, 1])
-
-            with b1:
-                buy_disabled = is_crash
-                if st.button(
-                    "🟢 BUY SPIKE" if not buy_disabled else "🚫 BUY BLOCKED (CRASH = SELL ONLY)",
-                    use_container_width=True,
-                    disabled=buy_disabled,
-                ):
-                    t_res = requests.post(
-                        f"{tunnel_url}/trade",
-                        json={
-                            "secret": secret_key,
-                            "symbol": symbol,
-                            "action": "BUY",
-                            "lot": lot_size,
-                            "sl_dollars": sl_dollars,
-                            "tp_dollars": tp_dollars,
-                        },
-                        timeout=TIMEOUT_SEC,
-                    ).json()
-                    if t_res.get("status") == "success":
-                        st.success(f"✅ BUY Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
-                    else:
-                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
-
-            with b2:
-                sell_disabled = is_boom
-                if st.button(
-                    "🔴 SELL SPIKE" if not sell_disabled else "🚫 SELL BLOCKED (BOOM = BUY ONLY)",
-                    use_container_width=True,
-                    disabled=sell_disabled,
-                ):
-                    t_res = requests.post(
-                        f"{tunnel_url}/trade",
-                        json={
-                            "secret": secret_key,
-                            "symbol": symbol,
-                            "action": "SELL",
-                            "lot": lot_size,
-                            "sl_dollars": sl_dollars,
-                            "tp_dollars": tp_dollars,
-                        },
-                        timeout=TIMEOUT_SEC,
-                    ).json()
-                    if t_res.get("status") == "success":
-                        st.success(f"✅ SELL Executed! Ticket #{t_res['ticket']} @ {t_res['price']:.4f}")
-                    else:
-                        st.error(f"❌ Execution Failed: {t_res.get('message')}")
-
-            with b3:
-                if st.button("🛑 CLOSE ALL", use_container_width=True):
-                    c_res = requests.post(
-                        f"{tunnel_url}/close_all",
-                        json={"secret": secret_key},
-                        timeout=TIMEOUT_SEC,
-                    ).json()
-                    st.info(f"Closed {c_res.get('closed', 0)} position(s).")
-
-            # Active Positions & Signal History Log
-            col_pos, col_hist = st.columns(2)
-            with col_pos:
-                st.markdown("**📊 Active Manual/Bot Positions (Magic 998877)**")
-                trades = resp.get("open_trades", [])
-                if trades:
-                    st.dataframe(pd.DataFrame(trades), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No open positions under Magic 998877.")
-
-            with col_hist:
-                st.markdown("**📜 Recent Sprayed Signals**")
-                history = resp.get("signal_history", [])
-                if history:
-                    for item in history:
-                        st.code(item, language=None)
-                else:
-                    st.caption("Signals will appear here when valid spike setups form.")
+    # Open Trades & Recent Signals
+    t_col, s_col = st.columns(2)
+    with t_col:
+        st.markdown("### 📈 Active Bot Positions (Magic 998877)")
+        open_trades = status_data.get("open_trades", [])
+        if open_trades:
+            st.dataframe(pd.DataFrame(open_trades), use_container_width=True, hide_index=True)
         else:
-            st.sidebar.error(resp.get("message", "Connection error"))
-    except Exception as e:
-        st.error(f"Could not reach Windows PC bridge: {e}")
+            st.caption("No open positions under Magic 998877.")
 
-# --- Optional Auto-Refresh Loop ---
-if refresh_choice in ("5s", "10s") and tunnel_url and secret_key:
-    delay = 5 if refresh_choice == "5s" else 10
-    time.sleep(delay)
-    st.rerun()
+    with s_col:
+        st.markdown("### 📜 Recent Spike Signals & Executions")
+        history = status_data.get("signal_history", [])
+        if history:
+            for line in history:
+                st.text(line)
+        else:
+            st.caption("Signals will appear here when valid spike setups form.")
+elif status_data:
+    st.error(status_data.get("message", "MT5 terminal not connected"))
