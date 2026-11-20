@@ -162,7 +162,7 @@ with m2:
 st.divider()
 
 # Telemetry & Refresh Controls
-st.subheader(f"📡 Live MT5 Multi-Product Scanner & {timeframe} Analysis")
+st.subheader(f"📡 Live MT5 Multi-Product Telemetry & {timeframe} Direction Analysis")
 r1, r2 = st.columns([3, 1])
 with r1:
     manual_sync = st.button("🔄 Sync Live Account, Multi-Product Direction & Tick Data", use_container_width=True)
@@ -198,6 +198,28 @@ if status_data and status_data.get("status") == "connected":
     else:
         st.warning("🟡 **CURRENT MODE: TRADE MANUALLY** — Scanner active; automatic entries paused.")
 
+    telemetry_map = status_data.get("symbol_telemetry", {})
+    focus_sym = st.selectbox("Inspect Trend & RSI Focus Product", selected_products, index=0)
+    focus_item = telemetry_map.get(focus_sym, {})
+    focus_dir = focus_item.get("direction", "SIDEWAYS")
+    focus_rsi = focus_item.get("rsi", "-")
+    focus_env = focus_item.get("spike_environment", "-")
+    focus_sig = focus_item.get("latest_signal", f"{focus_sym} [{timeframe}]")
+
+    trend_badge = "📈 UPTREND" if focus_dir == "UPTREND" else ("📉 DOWNTREND" if focus_dir == "DOWNTREND" else "↔️ SIDEWAYS")
+
+    # Prominent Trend & RSI Readout Cards
+    d1, d2 = st.columns(2)
+    with d1:
+        st.caption(f"{timeframe} Market Direction ({focus_sym})")
+        st.markdown(f"## {trend_badge}")
+    with d2:
+        st.caption(f"RSI (14) — {focus_sym}")
+        st.markdown(f"## {focus_rsi}")
+
+    st.caption(f"🎯 Spike Environment: **{focus_env}**")
+    st.info(f"📢 **ANALYSIS STATUS:** {focus_sig}")
+
     # Account Metrics
     b1, b2, b3, b4 = st.columns(4)
     b1.metric("Balance", f"${status_data.get('balance', 0):,.2f}")
@@ -210,7 +232,6 @@ if status_data and status_data.get("status") == "connected":
 
     # Multi-Product Live Scanner Table
     st.markdown("### 📊 Live Spike Scanner Across Selected Products")
-    telemetry_map = status_data.get("symbol_telemetry", {})
     rows = []
     for sym in selected_products:
         item = telemetry_map.get(sym, {})
@@ -233,7 +254,7 @@ if status_data and status_data.get("status") == "connected":
     st.subheader("🚀 Manual Spike Execution")
     mc1, mc2, mc3 = st.columns([2, 1, 1])
     with mc1:
-        manual_sym = st.selectbox("Target Product for Manual Entry", selected_products)
+        manual_sym = st.selectbox("Target Product for Manual Entry", selected_products, key="manual_target_sym")
     is_boom_manual = "BOOM" in manual_sym.upper()
     manual_action = "BUY" if is_boom_manual else "SELL"
     btn_label = f"🟢 BUY SPIKE ({manual_sym})" if is_boom_manual else f"🔴 SELL SPIKE ({manual_sym})"
