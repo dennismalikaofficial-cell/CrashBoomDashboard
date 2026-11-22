@@ -1,5 +1,5 @@
-import requests
 import pandas as pd
+import requests
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
@@ -114,6 +114,12 @@ with c3:
 with c4:
     tp_dollars = st.number_input("Take Profit ($) Per Trade", min_value=0.10, max_value=1000.0, value=2.00, step=0.50)
 
+# Keep automatic SL off by default so spikes aren't cut by tight SL battles
+enable_auto_sl = st.checkbox(
+    "Enable Automatic USD Stop-Loss Exit (Off by default — no auto SL battle; USD TP stays active)",
+    value=False,
+)
+
 # Execution Mode Control
 st.subheader("🎛️ Execution Mode Control")
 m1, m2 = st.columns(2)
@@ -125,6 +131,7 @@ with m1:
                 json={
                     "secret": bridge_secret,
                     "auto_mode": True,
+                    "auto_sl_enabled": bool(enable_auto_sl),
                     "symbols": selected_products,
                     "timeframe": timeframe,
                     "lot": float(lot_size),
@@ -146,6 +153,7 @@ with m2:
                 json={
                     "secret": bridge_secret,
                     "auto_mode": False,
+                    "auto_sl_enabled": bool(enable_auto_sl),
                     "symbols": selected_products,
                     "timeframe": timeframe,
                     "lot": float(lot_size),
@@ -155,7 +163,7 @@ with m2:
                 timeout=10,
             )
             if r.json().get("status") == "success":
-                st.info("Switched to Manual Mode (Auto entries paused; USD SL/TP still active).")
+                st.info("Switched to Manual Mode (Auto entries paused; USD TP active).")
         except Exception as e:
             st.error(f"Failed to update mode: {e}")
 
@@ -190,13 +198,18 @@ except Exception as e:
     st.error(f"Could not reach local bridge at {tunnel_url}: {e}")
 
 if status_data and status_data.get("status") == "connected":
+    auto_sl_status = "ON" if status_data.get("auto_sl_enabled", False) else "OFF (Manual SL)"
     if status_data.get("auto_mode"):
         st.success(
             f"🟢 **CURRENT MODE: ALLOW AUTOMATICALLY** — Scanning **{len(selected_products)}** product(s) "
-            f"| Active Bot Trades: **{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)} max**"
+            f"| Active Bot Trades: **{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)} max** "
+            f"| Auto SL: **{auto_sl_status}**"
         )
     else:
-        st.warning("🟡 **CURRENT MODE: TRADE MANUALLY** — Scanner active; automatic entries paused.")
+        st.warning(
+            f"🟡 **CURRENT MODE: TRADE MANUALLY** — Scanner active; automatic entries paused "
+            f"| Auto SL: **{auto_sl_status}**"
+        )
 
     telemetry_map = status_data.get("symbol_telemetry", {})
     focus_sym = st.selectbox("Inspect Trend & RSI Focus Product", selected_products, index=0)
@@ -205,6 +218,10 @@ if status_data and status_data.get("status") == "connected":
     focus_rsi = focus_item.get("rsi", "-")
     focus_env = focus_item.get("spike_environment", "-")
     focus_sig = focus_item.get("latest_signal", f"{focus_sym} [{timeframe}]")
+    focus_entry = focus_item.get("rec_entry", 0.0)
+    focus_sl = focus_item.get("rec_sl", 0.0)
+    focus_tp = focus_item.get("rec_tp", 0.0)
+    focus_conf = focus_item.get("confidence", "-")
 
     trend_badge = "📈 UPTREND" if focus_dir == "UPTREND" else ("📉 DOWNTREND" if focus_dir == "DOWNTREND" else "↔️ SIDEWAYS")
 
@@ -217,8 +234,14 @@ if status_data and status_data.get("status") == "connected":
         st.caption(f"RSI (14) — {focus_sym}")
         st.markdown(f"## {focus_rsi}")
 
-    st.caption(f"🎯 Spike Environment: **{focus_env}**")
+    st.caption(f"🎯 Spike Environment: **{focus_env}** | Setup Confidence: **{focus_conf}**")
     st.info(f"📢 **ANALYSIS STATUS:** {focus_sig}")
+
+    # Manual Recommended Entry, SL & TP Readout
+    rec1, rec2, rec3 = st.columns(3)
+    rec1.metric("Manual Rec Entry", f"{focus_entry}")
+    rec2.metric("Manual Rec SL", f"{focus_sl}")
+    rec3.metric("Manual Rec TP", f"{focus_tp}")
 
     # Account Metrics
     b1, b2, b3, b4 = st.columns(4)
@@ -242,6 +265,9 @@ if status_data and status_data.get("status") == "connected":
             "Ask": item.get("ask", 0.0),
             f"{timeframe} Trend": item.get("direction", "-"),
             "RSI (14)": item.get("rsi", "-"),
+            "Rec Entry": item.get("rec_entry", 0.0),
+            "Rec SL (Manual)": item.get("rec_sl", 0.0),
+            "Rec TP (Manual)": item.get("rec_tp", 0.0),
             "Spike Status": item.get("spike_environment", "-"),
             "Active Trade": f"{item.get('open_count', 0)} / 1",
         })
@@ -252,7 +278,7 @@ if status_data and status_data.get("status") == "connected":
 
     # Manual Spike Execution for Any Selected Product
     st.subheader("🚀 Manual Spike Execution")
-    mc1, mc2, mc3 = st.columns([2, 1, 1])
+    mc1, mc2, mc3, mc4 = st.columns([2, 1, 1.3, 1])
     with mc1:
         manual_sym = st.selectbox("Target Product for Manual Entry", selected_products, key="manual_target_sym")
     is_boom_manual = "BOOM" in manual_sym.upper()
@@ -271,6 +297,7 @@ if status_data and status_data.get("status") == "connected":
                     "lot": float(lot_size),
                     "sl_dollars": float(sl_dollars),
                     "tp_dollars": float(tp_dollars),
+                    "use_recommended_levels": False,
                 },
                 timeout=10,
             ).json()
@@ -280,6 +307,30 @@ if status_data and status_data.get("status") == "connected":
                 st.error(tr.get("message", "Order rejected"))
 
     with mc3:
+        st.write("")
+        if st.button("🎯 USE BOT REC ENTRY, SL & TP", use_container_width=True):
+            tr = requests.post(
+                f"{tunnel_url}/trade",
+                json={
+                    "secret": bridge_secret,
+                    "symbol": manual_sym,
+                    "action": manual_action,
+                    "lot": float(lot_size),
+                    "sl_dollars": float(sl_dollars),
+                    "tp_dollars": float(tp_dollars),
+                    "use_recommended_levels": True,
+                },
+                timeout=10,
+            ).json()
+            if tr.get("status") == "success":
+                st.success(
+                    f"Opened {manual_action} on {manual_sym} with Bot Rec SL/TP "
+                    f"(Ticket {tr.get('ticket')})"
+                )
+            else:
+                st.error(tr.get("message", "Order rejected"))
+
+    with mc4:
         st.write("")
         if st.button("🛑 CLOSE ALL BOT TRADES", use_container_width=True):
             cl = requests.post(
