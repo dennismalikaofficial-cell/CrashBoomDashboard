@@ -18,6 +18,14 @@ ALL_PRODUCTS = [
     "Crash 300 Index",
 ]
 
+if "selected_products" not in st.session_state:
+    st.session_state.selected_products = ["Boom 1000 Index"]
+
+
+def set_products(products):
+    st.session_state.selected_products = list(products)
+
+
 # Sidebar: Bridge & MT5 Credentials
 with st.sidebar:
     st.header("🌐 Cloud-to-PC Bridge")
@@ -70,26 +78,38 @@ st.caption("Multi-Product Smart Spike-Hunting • 1 Active Trade Per Selected Pr
 st.subheader("🎯 Select Boom & Crash Products to Hunt")
 
 preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
-if "selected_products" not in st.session_state:
-    st.session_state.selected_products = ["Boom 1000 Index"]
-
 with preset_col1:
-    if st.button("1️⃣ Option 1: Boom 1000 Only", use_container_width=True):
-        st.session_state.selected_products = ["Boom 1000 Index"]
+    st.button(
+        "1️⃣ Option 1: Boom 1000 Only",
+        use_container_width=True,
+        on_click=set_products,
+        args=(["Boom 1000 Index"],),
+    )
 with preset_col2:
-    if st.button("2️⃣ Option 2: Boom 1000 + Crash 1000", use_container_width=True):
-        st.session_state.selected_products = ["Boom 1000 Index", "Crash 1000 Index"]
+    st.button(
+        "2️⃣ Option 2: Boom 1000 + Crash 1000",
+        use_container_width=True,
+        on_click=set_products,
+        args=(["Boom 1000 Index", "Crash 1000 Index"],),
+    )
 with preset_col3:
-    if st.button("🔥 All Booms (1000 / 500 / 300)", use_container_width=True):
-        st.session_state.selected_products = ["Boom 1000 Index", "Boom 500 Index", "Boom 300 Index"]
+    st.button(
+        "🔥 All Booms (1000 / 500 / 300)",
+        use_container_width=True,
+        on_click=set_products,
+        args=(["Boom 1000 Index", "Boom 500 Index", "Boom 300 Index"],),
+    )
 with preset_col4:
-    if st.button("⚡ All 6 Booms & Crashes", use_container_width=True):
-        st.session_state.selected_products = ALL_PRODUCTS.copy()
+    st.button(
+        "⚡ All 6 Booms & Crashes",
+        use_container_width=True,
+        on_click=set_products,
+        args=(ALL_PRODUCTS,),
+    )
 
 selected_products = st.multiselect(
     "Active Spike-Hunting Products (Add or remove any combination — max 1 trade per selected product):",
     options=ALL_PRODUCTS,
-    default=st.session_state.selected_products,
     key="selected_products",
 )
 
@@ -223,7 +243,11 @@ if status_data and status_data.get("status") == "connected":
     focus_tp = focus_item.get("rec_tp", 0.0)
     focus_conf = focus_item.get("confidence", "-")
 
-    trend_badge = "📈 UPTREND" if focus_dir == "UPTREND" else ("📉 DOWNTREND" if focus_dir == "DOWNTREND" else "↔️ SIDEWAYS")
+    trend_badge = (
+        "📈 UPTREND"
+        if focus_dir == "UPTREND"
+        else ("📉 DOWNTREND" if focus_dir == "DOWNTREND" else "↔️ SIDEWAYS")
+    )
 
     # Prominent Trend & RSI Readout Cards
     d1, d2 = st.columns(2)
