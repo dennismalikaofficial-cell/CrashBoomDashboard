@@ -19,20 +19,27 @@ ALL_PRODUCTS = [
 ]
 
 if "selected_products" not in st.session_state:
-    st.session_state.selected_products = ["Boom 1000 Index"]
+    st.session_state.selected_products = ALL_PRODUCTS.copy()
 
 
 def set_products(products):
     st.session_state.selected_products = list(products)
 
 
-# Sidebar: Bridge & MT5 Credentials
+# Sidebar: Connection Mode, Bridge & MT5 Credentials
 with st.sidebar:
-    st.header("🌐 Cloud-to-PC Bridge")
-    tunnel_url = st.text_input(
-        "Tailscale / Tunnel URL",
-        value="https://desktop-ai0n2q3.tailc88f10.ts.net",
-    ).rstrip("/")
+    st.header("🌐 Connection Mode")
+    conn_mode = st.radio(
+        "Dashboard Location",
+        ["Cloud Link (Tailscale)", "Local PC (127.0.0.1)"],
+        index=0,
+    )
+    default_url = (
+        "http://127.0.0.1:8000"
+        if conn_mode == "Local PC (127.0.0.1)"
+        else "https://desktop-ai0n2q3.tailc88f10.ts.net"
+    )
+    tunnel_url = st.text_input("Bridge URL", value=default_url).rstrip("/")
     bridge_secret = st.text_input(
         "Bridge Secret Key",
         value="dennis_secret_998877",
@@ -72,7 +79,7 @@ with st.sidebar:
 
 # Main Header
 st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
-st.caption("Multi-Product Smart Spike-Hunting • 1 Active Trade Per Selected Product • Cloud Synced")
+st.caption("Multi-Product Precision Spike Exhaustion • 1 Active Trade Per Selected Product • Local & Cloud Ready")
 
 # Product Selection Presets & Multi-Select Pills
 st.subheader("🎯 Select Boom & Crash Products to Hunt")
@@ -120,7 +127,7 @@ if not selected_products:
 st.info(
     f"🛡️ **Risk & Capacity Rule:** **{len(selected_products)} product(s)** selected $\\rightarrow$ "
     f"Max **{len(selected_products)} concurrent trade(s)** total (**1 active trade per product**, "
-    f"re-entering only when a fresh spike setup forms). Boom = **BUY only** | Crash = **SELL only**."
+    f"entering only after 4+ anti-spike drift ticks & momentum stall). Boom = **BUY only** | Crash = **SELL only**."
 )
 
 # Parameters Row
@@ -132,9 +139,8 @@ with c2:
 with c3:
     sl_dollars = st.number_input("Stop Loss ($) Per Trade", min_value=0.10, max_value=1000.0, value=2.00, step=0.50)
 with c4:
-    tp_dollars = st.number_input("Take Profit ($) Per Trade", min_value=0.10, max_value=1000.0, value=2.00, step=0.50)
+    tp_dollars = st.number_input("Take Profit ($) Per Trade", min_value=0.10, max_value=1000.0, value=0.50, step=0.25)
 
-# Keep automatic SL off by default so spikes aren't cut by tight SL battles
 enable_auto_sl = st.checkbox(
     "Enable Automatic USD Stop-Loss Exit (Off by default — no auto SL battle; USD TP stays active)",
     value=False,
@@ -249,7 +255,6 @@ if status_data and status_data.get("status") == "connected":
         else ("📉 DOWNTREND" if focus_dir == "DOWNTREND" else "↔️ SIDEWAYS")
     )
 
-    # Prominent Trend & RSI Readout Cards
     d1, d2 = st.columns(2)
     with d1:
         st.caption(f"{timeframe} Market Direction ({focus_sym})")
@@ -277,23 +282,22 @@ if status_data and status_data.get("status") == "connected":
         f"{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)}",
     )
 
-    # Multi-Product Live Scanner Table
+    # Compact Multi-Product Live Scanner Table (fits cleanly without sideways scroll)
     st.markdown("### 📊 Live Spike Scanner Across Selected Products")
     rows = []
     for sym in selected_products:
         item = telemetry_map.get(sym, {})
         rows.append({
-            "Product": sym,
-            "Allowed Side": item.get("side", "-"),
-            "Bid": item.get("bid", 0.0),
-            "Ask": item.get("ask", 0.0),
-            f"{timeframe} Trend": item.get("direction", "-"),
-            "RSI (14)": item.get("rsi", "-"),
+            "Product": sym.replace(" Index", ""),
+            "Side": item.get("side", "-"),
+            "Price": item.get("ask", 0.0) if "BOOM" in sym.upper() else item.get("bid", 0.0),
+            "Trend": item.get("direction", "-"),
+            "RSI": item.get("rsi", "-"),
             "Rec Entry": item.get("rec_entry", 0.0),
-            "Rec SL (Manual)": item.get("rec_sl", 0.0),
-            "Rec TP (Manual)": item.get("rec_tp", 0.0),
-            "Spike Status": item.get("spike_environment", "-"),
-            "Active Trade": f"{item.get('open_count', 0)} / 1",
+            "Rec SL": item.get("rec_sl", 0.0),
+            "Rec TP": item.get("rec_tp", 0.0),
+            "Radar": item.get("spike_environment", "-"),
+            "Slot": f"{item.get('open_count', 0)}/1",
         })
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
