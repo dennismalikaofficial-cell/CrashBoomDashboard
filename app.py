@@ -20,25 +20,18 @@ ALL_PRODUCTS = [
 
 if "selected_products" not in st.session_state:
     st.session_state.selected_products = ALL_PRODUCTS.copy()
-if "pending_products" not in st.session_state:
-    st.session_state.pending_products = None
-
-if st.session_state.pending_products is not None:
-    st.session_state.selected_products = list(st.session_state.pending_products)
-    st.session_state.pending_products = None
 
 
-def queue_products(products):
-    st.session_state.pending_products = list(products)
+def set_products(products):
+    st.session_state.selected_products = list(products)
 
 
-# Sidebar: Connection Mode, Bridge & MT5 Credentials
 with st.sidebar:
     st.header("🌐 Connection Mode")
     conn_mode = st.radio(
         "Dashboard Location",
         ["Cloud Link (Tailscale)", "Local PC (127.0.0.1)"],
-        index=0,
+        index=1,
     )
     default_url = (
         "http://127.0.0.1:8000"
@@ -83,60 +76,9 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Bridge unreachable: {e}")
 
-# Main Header
 st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
-st.caption("Multi-Product Precision Spike Exhaustion • Priority Ranker • 1 Active Trade Per Selected Product")
+st.caption("Multi-Product Precision Spike Exhaustion • 1 Active Trade Per Selected Product • Local & Cloud Ready")
 
-# Fetch status early so Top Priority Banner can display live scores
-timeframe_preview = "M1"
-status_data = None
-try:
-    resp = requests.get(
-        f"{tunnel_url}/status",
-        params={
-            "secret": bridge_secret,
-            "symbols": ",".join(st.session_state.selected_products or ALL_PRODUCTS),
-            "timeframe": timeframe_preview,
-        },
-        timeout=10,
-    )
-    status_data = resp.json()
-except Exception:
-    status_data = None
-
-telemetry_map = (status_data or {}).get("symbol_telemetry", {})
-top_item = None
-if telemetry_map:
-    ranked_items = sorted(
-        telemetry_map.values(),
-        key=lambda x: x.get("score", 0),
-        reverse=True,
-    )
-    if ranked_items:
-        top_item = ranked_items[0]
-
-# #1 Top Priority Product Banner (Single-Product Focus for Clean Records)
-if top_item:
-    top_sym = top_item.get("symbol", "Boom 1000 Index")
-    top_score = top_item.get("score", 0)
-    top_dir = top_item.get("direction", "SIDEWAYS")
-    top_env = top_item.get("spike_environment", "-")
-    p_col1, p_col2 = st.columns([3, 1.3])
-    with p_col1:
-        st.success(
-            f"🥇 **#1 PRIORITY PRODUCT RIGHT NOW:** **{top_sym}** "
-            f"(Quality Score: **{top_score}/100** • Trend: **{top_dir}** • Radar: **{top_env}**)"
-        )
-    with p_col2:
-        st.write("")
-        st.button(
-            f"🎯 Lock to {top_sym.replace(' Index', '')} Only",
-            use_container_width=True,
-            on_click=queue_products,
-            args=([top_sym],),
-        )
-
-# Product Selection Presets & Multi-Select Pills
 st.subheader("🎯 Select Boom & Crash Products to Hunt")
 
 preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
@@ -144,28 +86,28 @@ with preset_col1:
     st.button(
         "1️⃣ Option 1: Boom 1000 Only",
         use_container_width=True,
-        on_click=queue_products,
+        on_click=set_products,
         args=(["Boom 1000 Index"],),
     )
 with preset_col2:
     st.button(
         "2️⃣ Option 2: Boom 1000 + Crash 1000",
         use_container_width=True,
-        on_click=queue_products,
+        on_click=set_products,
         args=(["Boom 1000 Index", "Crash 1000 Index"],),
     )
 with preset_col3:
     st.button(
         "🔥 All Booms (1000 / 500 / 300)",
         use_container_width=True,
-        on_click=queue_products,
+        on_click=set_products,
         args=(["Boom 1000 Index", "Boom 500 Index", "Boom 300 Index"],),
     )
 with preset_col4:
     st.button(
         "⚡ All 6 Booms & Crashes",
         use_container_width=True,
-        on_click=queue_products,
+        on_click=set_products,
         args=(ALL_PRODUCTS,),
     )
 
@@ -185,7 +127,6 @@ st.info(
     f"entering only after 4+ anti-spike drift ticks & momentum stall). Boom = **BUY only** | Crash = **SELL only**."
 )
 
-# Parameters Row
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1"], index=0)
@@ -201,7 +142,6 @@ enable_auto_sl = st.checkbox(
     value=False,
 )
 
-# Execution Mode Control
 st.subheader("🎛️ Execution Mode Control")
 m1, m2 = st.columns(2)
 with m1:
@@ -250,7 +190,6 @@ with m2:
 
 st.divider()
 
-# Telemetry & Refresh Controls
 st.subheader(f"📡 Live MT5 Multi-Product Telemetry & {timeframe} Direction Analysis")
 r1, r2 = st.columns([3, 1])
 with r1:
@@ -263,6 +202,7 @@ if refresh_choice == "15s":
 elif refresh_choice == "30s":
     st_autorefresh(interval=30000, key="auto_refresh_30")
 
+status_data = None
 try:
     resp = requests.get(
         f"{tunnel_url}/status",
@@ -276,7 +216,6 @@ try:
     status_data = resp.json()
 except Exception as e:
     st.error(f"Could not reach local bridge at {tunnel_url}: {e}")
-    status_data = None
 
 if status_data and status_data.get("status") == "connected":
     auto_sl_status = "ON" if status_data.get("auto_sl_enabled", False) else "OFF (Manual SL)"
@@ -293,11 +232,7 @@ if status_data and status_data.get("status") == "connected":
         )
 
     telemetry_map = status_data.get("symbol_telemetry", {})
-    default_focus_idx = 0
-    if top_item and top_item.get("symbol") in selected_products:
-        default_focus_idx = selected_products.index(top_item.get("symbol"))
-
-    focus_sym = st.selectbox("Inspect Trend & RSI Focus Product", selected_products, index=default_focus_idx)
+    focus_sym = st.selectbox("Inspect Trend & RSI Focus Product", selected_products, index=0)
     focus_item = telemetry_map.get(focus_sym, {})
     focus_dir = focus_item.get("direction", "SIDEWAYS")
     focus_rsi = focus_item.get("rsi", "-")
@@ -307,7 +242,6 @@ if status_data and status_data.get("status") == "connected":
     focus_sl = focus_item.get("rec_sl", 0.0)
     focus_tp = focus_item.get("rec_tp", 0.0)
     focus_conf = focus_item.get("confidence", "-")
-    focus_score = focus_item.get("score", 0)
 
     trend_badge = (
         "📈 UPTREND"
@@ -323,19 +257,14 @@ if status_data and status_data.get("status") == "connected":
         st.caption(f"RSI (14) — {focus_sym}")
         st.markdown(f"## {focus_rsi}")
 
-    st.caption(
-        f"🎯 Spike Environment: **{focus_env}** | Setup Confidence: **{focus_conf}** | "
-        f"Priority Score: **{focus_score}/100**"
-    )
+    st.caption(f"🎯 Spike Environment: **{focus_env}** | Setup Confidence: **{focus_conf}**")
     st.info(f"📢 **ANALYSIS STATUS:** {focus_sig}")
 
-    # Manual Recommended Entry, SL & TP Readout
     rec1, rec2, rec3 = st.columns(3)
     rec1.metric("Manual Rec Entry", f"{focus_entry}")
     rec2.metric("Manual Rec SL", f"{focus_sl}")
     rec3.metric("Manual Rec TP", f"{focus_tp}")
 
-    # Account Metrics
     b1, b2, b3, b4 = st.columns(4)
     b1.metric("Balance", f"${status_data.get('balance', 0):,.2f}")
     b2.metric("Equity", f"${status_data.get('equity', 0):,.2f}")
@@ -345,15 +274,12 @@ if status_data and status_data.get("status") == "connected":
         f"{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)}",
     )
 
-    # Compact Multi-Product Live Scanner Table (sorted by Priority Score)
-    st.markdown("### 📊 Live Spike Scanner (Ranked by Setup Priority Score)")
+    st.markdown("### 📊 Live Spike Scanner Across Selected Products")
     rows = []
-    for sym in ALL_PRODUCTS:
+    for sym in selected_products:
         item = telemetry_map.get(sym, {})
         rows.append({
-            "Score": item.get("score", 0),
             "Product": sym.replace(" Index", ""),
-            "Active": "✅" if sym in selected_products else "—",
             "Side": item.get("side", "-"),
             "Price": item.get("ask", 0.0) if "BOOM" in sym.upper() else item.get("bid", 0.0),
             "Trend": item.get("direction", "-"),
@@ -365,12 +291,10 @@ if status_data and status_data.get("status") == "connected":
             "Slot": f"{item.get('open_count', 0)}/1",
         })
     if rows:
-        scanner_df = pd.DataFrame(rows).sort_values(by="Score", ascending=False)
-        st.dataframe(scanner_df, use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     st.divider()
 
-    # Manual Spike Execution for Any Selected Product
     st.subheader("🚀 Manual Spike Execution")
     mc1, mc2, mc3, mc4 = st.columns([2, 1, 1.3, 1])
     with mc1:
@@ -434,7 +358,6 @@ if status_data and status_data.get("status") == "connected":
             ).json()
             st.info(f"Closed {cl.get('closed', 0)} bot position(s).")
 
-    # Open Trades & Recent Signals
     t_col, s_col = st.columns(2)
     with t_col:
         st.markdown("### 📈 Active Bot Positions (Magic 998877)")
@@ -453,7 +376,6 @@ if status_data and status_data.get("status") == "connected":
         else:
             st.caption("Signals will appear here when valid spike setups form.")
 
-    # Stage 1: 30-Day Proof Ledger
     st.divider()
     st.subheader("🏆 Stage 1: 30-Day Proof Ledger (Magic 998877)")
     journal = status_data.get("journal", [])
