@@ -386,5 +386,32 @@ if status_data and status_data.get("status") == "connected":
                 st.text(line)
         else:
             st.caption("Signals will appear here when valid spike setups form.")
+
+    # Stage 1: 30-Day Proof Ledger
+    st.divider()
+    st.subheader("🏆 Stage 1: 30-Day Proof Ledger (Magic 998877)")
+    journal = status_data.get("journal", [])
+    if journal:
+        j_df = pd.DataFrame(journal)
+        j_df["Profit_USD"] = pd.to_numeric(j_df["Profit_USD"], errors="coerce").fillna(0.0)
+        total_trades = len(j_df)
+        wins = len(j_df[j_df["Profit_USD"] > 0])
+        win_rate = round((wins / total_trades) * 100, 1) if total_trades > 0 else 0.0
+        net_profit = round(float(j_df["Profit_USD"].sum()), 2)
+
+        j1, j2, j3, j4 = st.columns(4)
+        j1.metric("Logged Closed Trades", total_trades)
+        j2.metric("Win Rate", f"{win_rate}%")
+        j3.metric("Net Closed Profit", f"${net_profit:,.2f}")
+        j4.download_button(
+            "📥 Export CSV Proof",
+            data=j_df.to_csv(index=False).encode("utf-8"),
+            file_name="Malika_Stage1_30Day_Proof.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        st.dataframe(j_df.iloc[::-1], use_container_width=True, hide_index=True)
+    else:
+        st.caption("Closed bot trades will automatically log here and save to trade_journal.csv.")
 elif status_data:
     st.error(status_data.get("message", "MT5 terminal not connected"))
