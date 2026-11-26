@@ -77,7 +77,7 @@ with st.sidebar:
             st.error(f"Bridge unreachable: {e}")
 
 st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
-st.caption("Entry-Only MT5 Trigger by Default • Manual SL/TP Opt-In • 1–2 Tick Pre-Spike Sense")
+st.caption("Entry-Only MT5 Trigger by Default • Auto Per-Symbol Min Lot • Tick-Deceleration Pre-Spike Sense")
 
 st.subheader("🎯 Select Boom & Crash Products to Hunt")
 
@@ -122,17 +122,16 @@ if not selected_products:
     selected_products = ["Boom 1000 Index"]
 
 st.info(
-    f"🛡️ **Entry-Only Rule:** **{len(selected_products)} product(s)** selected $\\rightarrow$ "
-    f"Max **{len(selected_products)} concurrent trade(s)** total (**1 active trade per product**). "
-    f"Only entries fire on MT5 unless you manually enable SL or TP below."
+    f"🛡️ **Entry-Only & Smart Lot Rule:** **{len(selected_products)} product(s)** selected $\\rightarrow$ "
+    f"Max **{len(selected_products)} concurrent trade(s)** total. Symbols accepting **0.20** keep **0.20**; "
+    f"symbols with higher broker minimums (such as **Boom 300** / **Crash 300**) automatically use their exact broker minimum lot."
 )
 
-# Parameters Row
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1"], index=0)
 with c2:
-    lot_size = st.number_input("Lot Size (Per Trade)", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
+    lot_size = st.number_input("Base Lot Size (0.20 Group)", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
 with c3:
     sl_dollars = st.number_input("Manual SL ($)", min_value=0.00, max_value=1000.0, value=2.00, step=0.50)
 with c4:
@@ -171,7 +170,7 @@ with m1:
                 timeout=10,
             )
             if r.json().get("status") == "success":
-                st.success(f"Auto-Mode ACTIVE across {len(selected_products)} product(s) (Entry-Only unless SL/TP checked)!")
+                st.success(f"Auto-Mode ACTIVE across {len(selected_products)} product(s)!")
         except Exception as e:
             st.error(f"Failed to update mode: {e}")
 
@@ -249,7 +248,6 @@ if status_data and status_data.get("status") == "connected":
     focus_rsi = focus_item.get("rsi", "-")
     focus_env = focus_item.get("spike_environment", "-")
     focus_sig = focus_item.get("latest_signal", f"{focus_sym} [{timeframe}]")
-    focus_entry = focus_item.get("rec_entry", 0.0)
     focus_conf = focus_item.get("confidence", "-")
     focus_pre = focus_item.get("pre_spike", "NONE")
 
@@ -288,6 +286,7 @@ if status_data and status_data.get("status") == "connected":
         rows.append({
             "Product": sym.replace(" Index", ""),
             "Side": item.get("side", "-"),
+            "Lot": item.get("effective_lot", lot_size),
             "Price": item.get("ask", 0.0) if "BOOM" in sym.upper() else item.get("bid", 0.0),
             "Entry Px": item.get("rec_entry", 0.0),
             "Trend": item.get("direction", "-"),
@@ -327,7 +326,7 @@ if status_data and status_data.get("status") == "connected":
                 timeout=10,
             ).json()
             if tr.get("status") == "success":
-                st.success(f"Opened {manual_action} entry on {manual_sym} (Ticket {tr.get('ticket')})")
+                st.success(f"Opened {manual_action} entry on {manual_sym} (Lot {tr.get('lot')}, Ticket {tr.get('ticket')})")
             else:
                 st.error(tr.get("message", "Order rejected"))
 
