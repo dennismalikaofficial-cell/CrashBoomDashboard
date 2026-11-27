@@ -5,7 +5,7 @@ import streamlit as st
 BRIDGE_URL_DEFAULT = "http://127.0.0.1:8000"
 BRIDGE_SECRET_DEFAULT = "dennis_secret_998877"
 
-WEEKLY_SCHEDULE = {
+FALLBACK_WEEKLY_SCHEDULE = {
     "Monday": ["Boom 1000 Index", "Step Index"],
     "Tuesday": ["Crash 1000 Index", "Volatility 75 Index", "XAUUSD"],
     "Wednesday": ["Boom 500 Index", "Step Index", "EURUSD"],
@@ -30,6 +30,11 @@ ALL_SYMBOLS = [
 
 st.set_page_config(page_title="Malika Synthetic Edge Dashboard", layout="wide")
 st.title("⚡ Malika Synthetic Edge — MT5 Control & Spike Telemetry")
+
+if "bridge_schedule" not in st.session_state:
+    st.session_state["bridge_schedule"] = None
+if "bridge_today_name" not in st.session_state:
+    st.session_state["bridge_today_name"] = datetime.now().strftime("%A")
 
 with st.sidebar:
     st.header("🌐 Connection Mode")
@@ -72,19 +77,27 @@ use_daily_schedule = st.toggle(
 )
 max_concurrent_symbols = st.slider("Max Concurrent Symbols", min_value=2, max_value=4, value=3)
 
-today_name = datetime.now().strftime("%A")
-todays_focus = WEEKLY_SCHEDULE.get(today_name, ALL_SYMBOLS[:3])
+today_name = st.session_state.get("bridge_today_name") or datetime.now().strftime("%A")
+todays_focus = (
+    st.session_state.get("bridge_schedule")
+    or FALLBACK_WEEKLY_SCHEDULE.get(today_name, ALL_SYMBOLS[:3])
+)
 
 if use_daily_schedule:
     st.info(f"**{today_name} Active Timetable:** {', '.join(todays_focus)}")
-    active_symbols = todays_focus
+    active_symbols = todays_focus[: int(max_concurrent_symbols)]
 else:
     st.caption("Timetable is **OFF** — select your symbols manually below.")
-    active_symbols = st.multiselect(
+    selected_symbols = st.multiselect(
         "Active Symbols",
         options=ALL_SYMBOLS,
         default=["Boom 1000 Index", "Crash 1000 Index", "Step Index"],
     )
+    if len(selected_symbols) > int(max_concurrent_symbols):
+        st.warning(
+            f"Selected {len(selected_symbols)} symbols; capping active scan to Max Concurrent Symbols ({int(max_concurrent_symbols)})."
+        )
+    active_symbols = selected_symbols[: int(max_concurrent_symbols)]
 
 col_tf, col_lot, col_auto = st.columns(3)
 with col_tf:
@@ -109,7 +122,8 @@ if st.button("Apply Mode & Schedule Settings", use_container_width=True):
             },
             timeout=req_timeout,
         )
-        st.success(f"Updated settings ({r.json().get('status', 'ok')})")
+        res_data = r.json()
+        st.success(f"Updated settings ({res_data.get('status', 'ok')})")
     except Exception as exc:
         st.error(f"Failed to update bridge: {exc}")
 
@@ -127,6 +141,11 @@ if st.button("Sync Live Account & Spike Telemetry", use_container_width=True):
             timeout=req_timeout,
         )
         payload = r.json()
+        if payload.get("scheduled_symbols"):
+            st.session_state["bridge_schedule"] = payload["scheduled_symbols"]
+        if payload.get("today_name"):
+            st.session_state["bridge_today_name"] = payload["today_name"]
+
         if payload.get("status") != "connected":
             st.warning(payload.get("message", "Bridge not connected to MT5"))
         else:
