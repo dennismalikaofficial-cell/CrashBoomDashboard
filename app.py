@@ -77,7 +77,7 @@ with st.sidebar:
             st.error(f"Bridge unreachable: {e}")
 
 st.title("⚡ Malika Synthetic Edge: Crash & Boom Command")
-st.caption("Entry-Only MT5 Trigger by Default • Auto Per-Symbol Min Lot • Tick-Deceleration Pre-Spike Sense")
+st.caption("Separated Group SL Controls • Highest-Sense Pre-Spike Trigger • Abrupt Trend-Flip Quit Warning")
 
 st.subheader("🎯 Select Boom & Crash Products to Hunt")
 
@@ -121,33 +121,56 @@ if not selected_products:
     st.warning("Select at least 1 Boom or Crash product above.")
     selected_products = ["Boom 1000 Index"]
 
-st.info(
-    f"🛡️ **Entry-Only & Smart Lot Rule:** **{len(selected_products)} product(s)** selected $\\rightarrow$ "
-    f"Max **{len(selected_products)} concurrent trade(s)** total. Symbols accepting **0.20** keep **0.20**; "
-    f"symbols with higher broker minimums (such as **Boom 300** / **Crash 300**) automatically use their exact broker minimum lot."
-)
-
-c1, c2, c3, c4 = st.columns(4)
-with c1:
+# Top row: Timeframe, Base Lot, and TP
+p1, p2, p3 = st.columns(3)
+with p1:
     timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1"], index=0)
-with c2:
+with p2:
     lot_size = st.number_input("Base Lot Size (0.20 Group)", min_value=0.01, max_value=50.0, value=0.20, step=0.05)
-with c3:
-    sl_dollars = st.number_input("Manual SL ($)", min_value=0.00, max_value=1000.0, value=2.00, step=0.50)
-with c4:
+with p3:
     tp_dollars = st.number_input("Manual TP ($)", min_value=0.00, max_value=1000.0, value=0.50, step=0.25)
 
-sl_col, tp_col = st.columns(2)
-with sl_col:
-    manual_sl_enabled = st.checkbox(
-        "Set SL Manually (Off by default — entry only on MT5)",
-        value=False,
-    )
-with tp_col:
-    manual_tp_enabled = st.checkbox(
-        "Set TP Manually (Off by default — entry only on MT5)",
-        value=False,
-    )
+manual_tp_enabled = st.checkbox(
+    "Set TP Manually Across Selected Products (Off by default — entry only on MT5)",
+    value=False,
+)
+
+# Separated SL Controls by Lot Group
+st.markdown("#### 🛡️ Separated Stop-Loss Controls by Lot Group")
+g1, g2 = st.columns(2)
+with g1:
+    with st.container(border=True):
+        st.markdown("**Group A: Standard 0.20 Lot Group** (Boom/Crash 1000 & 500)")
+        std_sl_dollars = st.number_input(
+            "0.20 Group SL ($)",
+            min_value=0.10,
+            max_value=1000.0,
+            value=2.00,
+            step=0.50,
+            key="std_sl_usd",
+        )
+        std_sl_enabled = st.checkbox(
+            "Enable SL for 0.20 Group (Off by default — moves freely)",
+            value=False,
+            key="std_sl_chk",
+        )
+
+with g2:
+    with st.container(border=True):
+        st.markdown("**Group B: Higher Min-Lot Group** (Boom 300 & Crash 300)")
+        alt_sl_dollars = st.number_input(
+            "300s Group SL ($)",
+            min_value=0.50,
+            max_value=1000.0,
+            value=5.00,
+            step=0.50,
+            key="alt_sl_usd",
+        )
+        alt_sl_enabled = st.checkbox(
+            "Enable SL for 300s Group (Off by default — entry only on MT5)",
+            value=False,
+            key="alt_sl_chk",
+        )
 
 st.subheader("🎛️ Execution Mode Control")
 m1, m2 = st.columns(2)
@@ -159,13 +182,15 @@ with m1:
                 json={
                     "secret": bridge_secret,
                     "auto_mode": True,
-                    "manual_sl_enabled": bool(manual_sl_enabled),
+                    "std_sl_enabled": bool(std_sl_enabled),
+                    "std_sl_dollars": float(std_sl_dollars),
+                    "alt_sl_enabled": bool(alt_sl_enabled),
+                    "alt_sl_dollars": float(alt_sl_dollars),
                     "manual_tp_enabled": bool(manual_tp_enabled),
+                    "tp_dollars": float(tp_dollars),
                     "symbols": selected_products,
                     "timeframe": timeframe,
                     "lot": float(lot_size),
-                    "sl_dollars": float(sl_dollars),
-                    "tp_dollars": float(tp_dollars),
                 },
                 timeout=10,
             )
@@ -182,13 +207,15 @@ with m2:
                 json={
                     "secret": bridge_secret,
                     "auto_mode": False,
-                    "manual_sl_enabled": bool(manual_sl_enabled),
+                    "std_sl_enabled": bool(std_sl_enabled),
+                    "std_sl_dollars": float(std_sl_dollars),
+                    "alt_sl_enabled": bool(alt_sl_enabled),
+                    "alt_sl_dollars": float(alt_sl_dollars),
                     "manual_tp_enabled": bool(manual_tp_enabled),
+                    "tp_dollars": float(tp_dollars),
                     "symbols": selected_products,
                     "timeframe": timeframe,
                     "lot": float(lot_size),
-                    "sl_dollars": float(sl_dollars),
-                    "tp_dollars": float(tp_dollars),
                 },
                 timeout=10,
             )
@@ -204,7 +231,7 @@ r1, r2 = st.columns([3, 1])
 with r1:
     manual_sync = st.button("🔄 Sync Live Account, Multi-Product Direction & Tick Data", use_container_width=True)
 with r2:
-    refresh_choice = st.selectbox("Auto-Refresh", ["Off", "15s", "30s"], index=0, label_visibility="collapsed")
+    refresh_choice = st.selectbox("Auto-Refresh", ["Off", "15s", "30s"], index=1, label_visibility="collapsed")
 
 if refresh_choice == "15s":
     st_autorefresh(interval=15000, key="auto_refresh_15")
@@ -227,18 +254,50 @@ except Exception as e:
     st.error(f"Could not reach local bridge at {tunnel_url}: {e}")
 
 if status_data and status_data.get("status") == "connected":
-    sl_state = f"MANUAL (${sl_dollars:.2f})" if status_data.get("manual_sl_enabled") else "OFF (Entry Only)"
-    tp_state = f"MANUAL (${tp_dollars:.2f})" if status_data.get("manual_tp_enabled") else "OFF (Entry Only)"
+    # Abrupt Trend-Flip / "Quit Manually" Warning Window
+    exit_warnings = status_data.get("exit_warnings", [])
+    if exit_warnings:
+        with st.container(border=True):
+            st.error(
+                "🚨 **TREND DIRECTION ABRUPTLY CHANGED — QUIT MANUALLY WINDOW:** "
+                "The following setup was highly expected to spike, but direction flipped against it:"
+            )
+            for w in exit_warnings:
+                wc1, wc2 = st.columns([3.5, 1])
+                with wc1:
+                    st.warning(
+                        f"**#{w['ticket']} • {w['symbol']} ({w['side']} {w['lot']}):** {w['message']}"
+                    )
+                with wc2:
+                    if st.button(
+                        f"✂️ Quit {w['symbol'].replace(' Index', '')} Now",
+                        key=f"quit_btn_{w['ticket']}",
+                        use_container_width=True,
+                    ):
+                        res = requests.post(
+                            f"{tunnel_url}/close_ticket",
+                            json={"secret": bridge_secret, "ticket": int(w["ticket"])},
+                            timeout=10,
+                        ).json()
+                        if res.get("status") == "success":
+                            st.success(f"Closed #{w['ticket']} ({w['symbol']})!")
+                            st.rerun()
+                        else:
+                            st.error(res.get("message", "Could not close ticket"))
+
+    std_sl_txt = f"ON (${std_sl_dollars:.2f})" if status_data.get("std_sl_enabled") else "FREE (Entry Only)"
+    alt_sl_txt = f"ON (${alt_sl_dollars:.2f})" if status_data.get("alt_sl_enabled") else "FREE (Entry Only)"
+    tp_txt = f"ON (${tp_dollars:.2f})" if status_data.get("manual_tp_enabled") else "OFF (Entry Only)"
+
     if status_data.get("auto_mode"):
         st.success(
-            f"🟢 **CURRENT MODE: ALLOW AUTOMATICALLY** — Scanning **{len(selected_products)}** product(s) "
-            f"| Active Trades: **{status_data.get('active_bot_trades_count', 0)} / {len(selected_products)}** "
-            f"| SL: **{sl_state}** | TP: **{tp_state}**"
+            f"🟢 **MODE: ALLOW AUTOMATICALLY** | Active: **{status_data.get('active_bot_trades_count', 0)}/{len(selected_products)}** "
+            f"| 0.20 Group SL: **{std_sl_txt}** | 300s SL: **{alt_sl_txt}** | TP: **{tp_txt}**"
         )
     else:
         st.warning(
-            f"🟡 **CURRENT MODE: TRADE MANUALLY** — Scanner active; automatic entries paused "
-            f"| SL: **{sl_state}** | TP: **{tp_state}**"
+            f"🟡 **MODE: TRADE MANUALLY** | 0.20 Group SL: **{std_sl_txt}** "
+            f"| 300s SL: **{alt_sl_txt}** | TP: **{tp_txt}**"
         )
 
     telemetry_map = status_data.get("symbol_telemetry", {})
@@ -285,10 +344,10 @@ if status_data and status_data.get("status") == "connected":
         item = telemetry_map.get(sym, {})
         rows.append({
             "Product": sym.replace(" Index", ""),
+            "Group": item.get("lot_group", "-"),
             "Side": item.get("side", "-"),
             "Lot": item.get("effective_lot", lot_size),
             "Price": item.get("ask", 0.0) if "BOOM" in sym.upper() else item.get("bid", 0.0),
-            "Entry Px": item.get("rec_entry", 0.0),
             "Trend": item.get("direction", "-"),
             "RSI": item.get("rsi", "-"),
             "Pre-Spike": item.get("pre_spike", "NONE"),
@@ -300,7 +359,7 @@ if status_data and status_data.get("status") == "connected":
 
     st.divider()
 
-    st.subheader("🚀 Manual Spike Execution (Entry Only Unless SL/TP Checked Above)")
+    st.subheader("🚀 Manual Spike Execution & Quick Position Quit")
     mc1, mc2, mc3 = st.columns([2.2, 1.3, 1.1])
     with mc1:
         manual_sym = st.selectbox("Target Product for Manual Entry", selected_products, key="manual_target_sym")
@@ -318,10 +377,12 @@ if status_data and status_data.get("status") == "connected":
                     "symbol": manual_sym,
                     "action": manual_action,
                     "lot": float(lot_size),
-                    "sl_dollars": float(sl_dollars),
-                    "tp_dollars": float(tp_dollars),
-                    "apply_manual_sl": bool(manual_sl_enabled),
+                    "std_sl_enabled": bool(std_sl_enabled),
+                    "std_sl_dollars": float(std_sl_dollars),
+                    "alt_sl_enabled": bool(alt_sl_enabled),
+                    "alt_sl_dollars": float(alt_sl_dollars),
                     "apply_manual_tp": bool(manual_tp_enabled),
+                    "tp_dollars": float(tp_dollars),
                 },
                 timeout=10,
             ).json()
@@ -346,17 +407,31 @@ if status_data and status_data.get("status") == "connected":
         open_trades = status_data.get("open_trades", [])
         if open_trades:
             st.dataframe(pd.DataFrame(open_trades), use_container_width=True, hide_index=True)
+            q_cols = st.columns(min(len(open_trades), 3))
+            for idx, pos in enumerate(open_trades):
+                with q_cols[idx % len(q_cols)]:
+                    if st.button(
+                        f"✂️ Quit #{pos['Ticket']} ({pos['Symbol'].replace(' Index', '')} | ${pos['P/L ($)']})",
+                        key=f"manual_quit_{pos['Ticket']}",
+                        use_container_width=True,
+                    ):
+                        requests.post(
+                            f"{tunnel_url}/close_ticket",
+                            json={"secret": bridge_secret, "ticket": int(pos["Ticket"])},
+                            timeout=10,
+                        )
+                        st.rerun()
         else:
             st.caption("No open positions under Magic 998877.")
 
     with s_col:
-        st.markdown("### 📜 Recent Spike Signals & Executions")
+        st.markdown("### 📜 Recent Spike Signals & Quit Alerts")
         history = status_data.get("signal_history", [])
         if history:
             for line in history:
                 st.text(line)
         else:
-            st.caption("Signals will appear here when valid spike setups form.")
+            st.caption("Signals and quit alerts will appear here.")
 
     st.divider()
     st.subheader("🏆 Stage 1: 30-Day Proof Ledger (Magic 998877)")
