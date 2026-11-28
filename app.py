@@ -71,8 +71,14 @@ for k, v in {
     "cfg_hydrated": False,
     "cfg_auto_mode": False,
     "cfg_use_schedule": False,
+    "cfg_use_session": False,
+    "cfg_sess_start": 16,
+    "cfg_sess_end": 23,
     "cfg_use_rec_sl_tp": False,
     "cfg_use_rec_lot": False,
+    "cfg_trail_sl_on": False,
+    "cfg_trail_start_usd": 0.60,
+    "cfg_trail_step_usd": 0.30,
     "cfg_max_syms": 3,
     "cfg_symbols": ["Boom 1000 Index", "Crash 1000 Index", "Step Index"],
     "cfg_timeframe": "M1",
@@ -105,10 +111,22 @@ def hydrate_from_payload(payload: dict, force: bool = False):
         st.session_state["cfg_auto_mode"] = bool(payload["auto_mode"])
     if "use_daily_schedule" in payload:
         st.session_state["cfg_use_schedule"] = bool(payload["use_daily_schedule"])
+    if "use_session_window" in payload:
+        st.session_state["cfg_use_session"] = bool(payload["use_session_window"])
+    if "session_start_hour" in payload:
+        st.session_state["cfg_sess_start"] = int(payload["session_start_hour"])
+    if "session_end_hour" in payload:
+        st.session_state["cfg_sess_end"] = int(payload["session_end_hour"])
     if "use_recommended_sl_tp" in payload:
         st.session_state["cfg_use_rec_sl_tp"] = bool(payload["use_recommended_sl_tp"])
     if "use_recommended_lot" in payload:
         st.session_state["cfg_use_rec_lot"] = bool(payload["use_recommended_lot"])
+    if "trailing_sl_enabled" in payload:
+        st.session_state["cfg_trail_sl_on"] = bool(payload["trailing_sl_enabled"])
+    if "trail_start_dollars" in payload:
+        st.session_state["cfg_trail_start_usd"] = float(payload["trail_start_dollars"])
+    if "trail_step_dollars" in payload:
+        st.session_state["cfg_trail_step_usd"] = float(payload["trail_step_dollars"])
     if "max_concurrent_symbols" in payload:
         st.session_state["cfg_max_syms"] = int(payload["max_concurrent_symbols"])
     if "std_sl_enabled" in payload:
@@ -169,8 +187,14 @@ def push_mode_settings(bridge_url: str, bridge_secret: str, active_symbols: list
             "secret": bridge_secret,
             "auto_mode": bool(st.session_state["cfg_auto_mode"]),
             "use_daily_schedule": bool(st.session_state["cfg_use_schedule"]),
+            "use_session_window": bool(st.session_state["cfg_use_session"]),
+            "session_start_hour": int(st.session_state["cfg_sess_start"]),
+            "session_end_hour": int(st.session_state["cfg_sess_end"]),
             "use_recommended_sl_tp": bool(st.session_state["cfg_use_rec_sl_tp"]),
             "use_recommended_lot": bool(st.session_state["cfg_use_rec_lot"]),
+            "trailing_sl_enabled": bool(st.session_state["cfg_trail_sl_on"]),
+            "trail_start_dollars": float(st.session_state["cfg_trail_start_usd"]),
+            "trail_step_dollars": float(st.session_state["cfg_trail_step_usd"]),
             "max_concurrent_symbols": int(st.session_state["cfg_max_syms"]),
             "std_sl_enabled": bool(st.session_state["cfg_std_sl_on"]),
             "std_sl_dollars": float(st.session_state["cfg_std_sl_usd"]),
@@ -192,7 +216,6 @@ with st.sidebar:
     st.markdown("### 🎛️ Control Center")
     st.caption("Click any button below to open its controls.")
 
-    # 1) Connection & MT5 Login Drawer
     with st.popover("🔐 MT5 Login & Bridge Connection", use_container_width=True):
         bridge_url = st.text_input("Bridge URL", value=BRIDGE_URL_DEFAULT)
         bridge_secret = st.text_input("Bridge Secret Key", value=BRIDGE_SECRET_DEFAULT, type="password")
@@ -224,7 +247,6 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"Bridge error: {exc}")
 
-    # 2) Timetable & Active Symbols Drawer
     with st.popover("📅 Timetable & Symbol Selection", use_container_width=True):
         st.session_state["cfg_use_schedule"] = st.toggle(
             "Daily Product Timetable",
@@ -253,6 +275,31 @@ with st.sidebar:
             st.session_state["cfg_symbols"] = picked or ["Boom 1000 Index"]
             resolved_syms = st.session_state["cfg_symbols"][: int(st.session_state["cfg_max_syms"])]
 
+        st.divider()
+        st.session_state["cfg_use_session"] = st.toggle(
+            "Session Time Window (Local Hour)",
+            value=st.session_state["cfg_use_session"],
+            help="Optional: restricts new Auto Spike entries to your chosen local hours (e.g. 16:00-23:00 EAT).",
+        )
+        h1, h2 = st.columns(2)
+        with h1:
+            st.session_state["cfg_sess_start"] = st.number_input(
+                "Start Hour (0-23)",
+                min_value=0,
+                max_value=23,
+                value=int(st.session_state["cfg_sess_start"]),
+                step=1,
+            )
+        with h2:
+            st.session_state["cfg_sess_end"] = st.number_input(
+                "End Hour (0-23)",
+                min_value=0,
+                max_value=23,
+                value=int(st.session_state["cfg_sess_end"]),
+                step=1,
+            )
+        st.caption("Recommended EAT windows: 17:00-23:00 (Synthetics) | 15:00-19:00 (XAUUSD / EURUSD)")
+
         if st.button("Apply Symbol / Schedule Settings", use_container_width=True):
             try:
                 res = push_mode_settings(bridge_url, bridge_secret, resolved_syms, req_timeout)
@@ -269,7 +316,6 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"Failed: {exc}")
 
-    # 3) Execution, Lot & SL/TP Drawer
     with st.popover("🛡️ Auto Execution & SL / TP Rules", use_container_width=True):
         st.session_state["cfg_auto_mode"] = st.toggle(
             "Auto Spike Execution",
@@ -304,11 +350,31 @@ with st.sidebar:
             value=st.session_state["cfg_use_rec_sl_tp"],
             help="ON: bot applies its recommended SL & TP per entry. OFF: uses your manual SL & TP settings below.",
         )
-        if st.session_state["cfg_use_rec_sl_tp"]:
-            st.caption("Bot recommended SL & TP will be applied automatically on new entries.")
-        else:
-            st.caption("Manual mode active — configure your SL and TP rules below.")
 
+        st.session_state["cfg_trail_sl_on"] = st.toggle(
+            "Moving / Trailing Profit-Lock SL",
+            value=st.session_state["cfg_trail_sl_on"],
+            help="Ratchets up a locked profit floor as price moves favorably so gains are protected if TP is not reached.",
+        )
+        t1, t2 = st.columns(2)
+        with t1:
+            st.session_state["cfg_trail_start_usd"] = st.number_input(
+                "Lock Start ($)",
+                min_value=0.10,
+                max_value=200.0,
+                value=float(st.session_state["cfg_trail_start_usd"]),
+                step=0.10,
+            )
+        with t2:
+            st.session_state["cfg_trail_step_usd"] = st.number_input(
+                "Trail Step ($)",
+                min_value=0.05,
+                max_value=100.0,
+                value=float(st.session_state["cfg_trail_step_usd"]),
+                step=0.05,
+            )
+
+        st.divider()
         st.session_state["cfg_std_sl_on"] = st.toggle(
             "0.20 Group SL (1000 / 500)",
             value=st.session_state["cfg_std_sl_on"],
@@ -362,7 +428,6 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"Failed: {exc}")
 
-    # 4) Quick Manual Order & Emergency Close Drawer
     with st.popover("🎯 Quick Order / Emergency Close", use_container_width=True):
         order_sym = st.selectbox("Symbol", options=ALL_SYMBOLS, index=0)
         order_side = st.radio("Direction", ["BUY", "SELL"], horizontal=True)
@@ -426,19 +491,26 @@ if st.session_state["last_payload"] is None:
 payload = st.session_state.get("last_payload")
 live_auto = payload.get("auto_mode", st.session_state["cfg_auto_mode"]) if payload else st.session_state["cfg_auto_mode"]
 live_sched = payload.get("use_daily_schedule", st.session_state["cfg_use_schedule"]) if payload else st.session_state["cfg_use_schedule"]
+live_sess = payload.get("use_session_window", st.session_state["cfg_use_session"]) if payload else st.session_state["cfg_use_session"]
+live_sess_active = payload.get("session_active", True) if payload else True
+live_sess_label = payload.get("session_label", f"{int(st.session_state['cfg_sess_start']):02d}:00-{int(st.session_state['cfg_sess_end']):02d}:00") if payload else f"{int(st.session_state['cfg_sess_start']):02d}:00-{int(st.session_state['cfg_sess_end']):02d}:00"
 live_rec_lot = payload.get("use_recommended_lot", st.session_state["cfg_use_rec_lot"]) if payload else st.session_state["cfg_use_rec_lot"]
 live_rec_sl_tp = payload.get("use_recommended_sl_tp", st.session_state["cfg_use_rec_sl_tp"]) if payload else st.session_state["cfg_use_rec_sl_tp"]
+live_trail_sl = payload.get("trailing_sl_enabled", st.session_state["cfg_trail_sl_on"]) if payload else st.session_state["cfg_trail_sl_on"]
 live_std_sl = payload.get("std_sl_enabled", st.session_state["cfg_std_sl_on"]) if payload else st.session_state["cfg_std_sl_on"]
 live_alt_sl = payload.get("alt_sl_enabled", st.session_state["cfg_alt_sl_on"]) if payload else st.session_state["cfg_alt_sl_on"]
 live_tp = payload.get("manual_tp_enabled", st.session_state["cfg_tp_on"]) if payload else st.session_state["cfg_tp_on"]
 
-# Always-visible ON/OFF status pills reflecting live bridge state
+sess_detail = f"{live_sess_label} {'ACTIVE' if live_sess_active else 'PAUSED'}"
+
 pills_markup = (
     '<div class="status-strip">'
     + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"])
     + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""))
+    + pill_html("Session", bool(live_sess), sess_detail)
     + pill_html("Rec Lot", bool(live_rec_lot), "Capital Tier")
     + pill_html("Rec SL/TP", bool(live_rec_sl_tp), "Bot ATR")
+    + pill_html("Moving SL", bool(live_trail_sl), f"Start ${st.session_state['cfg_trail_start_usd']:.2f}")
     + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}")
     + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
     + pill_html("Manual TP", bool(live_tp), f"${st.session_state['cfg_tp_usd']:.2f}")
@@ -538,7 +610,27 @@ if payload:
         with tab_ledger:
             journal_rows = payload.get("journal", [])
             if journal_rows:
-                st.dataframe(pd.DataFrame(journal_rows), use_container_width=True)
+                df_j = pd.DataFrame(journal_rows)
+                drop_cols = [c for c in df_j.columns if c is None or str(c).strip() in ("", "null", "None")]
+                if drop_cols:
+                    df_j = df_j.drop(columns=drop_cols)
+                df_j["Profit_Num"] = pd.to_numeric(df_j.get("Profit_USD", 0.0), errors="coerce").fillna(0.0)
+                df_j = df_j.sort_values(by="Time", ascending=False).reset_index(drop=True)
+                clean_export_df = df_j.drop(columns=["Profit_Num"])
+
+                l1, l2 = st.columns([3, 1])
+                with l1:
+                    st.caption(f"Logged Deals: {len(df_j)} | Recorded Journal P/L: ${df_j['Profit_Num'].sum():+.2f}")
+                with l2:
+                    st.download_button(
+                        label="⬇️ Download Ledger CSV",
+                        data=clean_export_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"malika_trade_ledger_{datetime.now().strftime('%Y-%m-%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+
+                st.dataframe(clean_export_df, use_container_width=True)
             else:
                 st.caption("No closed deals recorded in `trade_journal.csv` yet.")
 
