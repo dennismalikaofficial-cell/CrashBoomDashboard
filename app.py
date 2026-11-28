@@ -71,6 +71,7 @@ for k, v in {
     "cfg_hydrated": False,
     "cfg_auto_mode": False,
     "cfg_use_schedule": False,
+    "cfg_use_rec_sl_tp": False,
     "cfg_max_syms": 3,
     "cfg_symbols": ["Boom 1000 Index", "Crash 1000 Index", "Step Index"],
     "cfg_timeframe": "M1",
@@ -103,6 +104,8 @@ def hydrate_from_payload(payload: dict, force: bool = False):
         st.session_state["cfg_auto_mode"] = bool(payload["auto_mode"])
     if "use_daily_schedule" in payload:
         st.session_state["cfg_use_schedule"] = bool(payload["use_daily_schedule"])
+    if "use_recommended_sl_tp" in payload:
+        st.session_state["cfg_use_rec_sl_tp"] = bool(payload["use_recommended_sl_tp"])
     if "max_concurrent_symbols" in payload:
         st.session_state["cfg_max_syms"] = int(payload["max_concurrent_symbols"])
     if "std_sl_enabled" in payload:
@@ -163,6 +166,7 @@ def push_mode_settings(bridge_url: str, bridge_secret: str, active_symbols: list
             "secret": bridge_secret,
             "auto_mode": bool(st.session_state["cfg_auto_mode"]),
             "use_daily_schedule": bool(st.session_state["cfg_use_schedule"]),
+            "use_recommended_sl_tp": bool(st.session_state["cfg_use_rec_sl_tp"]),
             "max_concurrent_symbols": int(st.session_state["cfg_max_syms"]),
             "std_sl_enabled": bool(st.session_state["cfg_std_sl_on"]),
             "std_sl_dollars": float(st.session_state["cfg_std_sl_usd"]),
@@ -285,6 +289,16 @@ with st.sidebar:
             )
 
         st.divider()
+        st.session_state["cfg_use_rec_sl_tp"] = st.toggle(
+            "Allow Recommended SL / TP (Bot ATR)",
+            value=st.session_state["cfg_use_rec_sl_tp"],
+            help="ON: bot applies its recommended SL & TP per entry. OFF: uses your manual SL & TP settings below.",
+        )
+        if st.session_state["cfg_use_rec_sl_tp"]:
+            st.caption("Bot recommended SL & TP will be applied automatically on new entries.")
+        else:
+            st.caption("Manual mode active — configure your SL and TP rules below.")
+
         st.session_state["cfg_std_sl_on"] = st.toggle(
             "0.20 Group SL (1000 / 500)",
             value=st.session_state["cfg_std_sl_on"],
@@ -352,6 +366,7 @@ with st.sidebar:
                         "symbol": order_sym,
                         "action": order_side,
                         "lot": float(order_lot),
+                        "use_recommended_sl_tp": bool(st.session_state["cfg_use_rec_sl_tp"]),
                         "std_sl_enabled": bool(st.session_state["cfg_std_sl_on"]),
                         "std_sl_dollars": float(st.session_state["cfg_std_sl_usd"]),
                         "alt_sl_enabled": bool(st.session_state["cfg_alt_sl_on"]),
@@ -400,6 +415,7 @@ if st.session_state["last_payload"] is None:
 payload = st.session_state.get("last_payload")
 live_auto = payload.get("auto_mode", st.session_state["cfg_auto_mode"]) if payload else st.session_state["cfg_auto_mode"]
 live_sched = payload.get("use_daily_schedule", st.session_state["cfg_use_schedule"]) if payload else st.session_state["cfg_use_schedule"]
+live_rec_sl_tp = payload.get("use_recommended_sl_tp", st.session_state["cfg_use_rec_sl_tp"]) if payload else st.session_state["cfg_use_rec_sl_tp"]
 live_std_sl = payload.get("std_sl_enabled", st.session_state["cfg_std_sl_on"]) if payload else st.session_state["cfg_std_sl_on"]
 live_alt_sl = payload.get("alt_sl_enabled", st.session_state["cfg_alt_sl_on"]) if payload else st.session_state["cfg_alt_sl_on"]
 live_tp = payload.get("manual_tp_enabled", st.session_state["cfg_tp_on"]) if payload else st.session_state["cfg_tp_on"]
@@ -409,6 +425,7 @@ pills_markup = (
     '<div class="status-strip">'
     + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"])
     + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""))
+    + pill_html("Rec SL/TP", bool(live_rec_sl_tp), "Bot ATR")
     + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}")
     + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
     + pill_html("Manual TP", bool(live_tp), f"${st.session_state['cfg_tp_usd']:.2f}")
@@ -464,6 +481,8 @@ if payload:
                         "Confidence": info.get("confidence"),
                         "Direction": info.get("direction"),
                         "RSI": info.get("rsi"),
+                        "Rec SL": f"{info.get('rec_sl_price')} (~${info.get('rec_sl_usd', 0.0):.2f})",
+                        "Rec TP": f"{info.get('rec_tp_price')} (~${info.get('rec_tp_usd', 0.0):.2f})",
                         "Environment": info.get("spike_environment"),
                         "Lot": info.get("effective_lot"),
                     }
@@ -500,7 +519,7 @@ if payload:
                         )
                         st.rerun()
             else:
-                st.caption("No open bot trades right now.")
+                st.caption("No open trades right now.")
 
         with tab_ledger:
             journal_rows = payload.get("journal", [])
