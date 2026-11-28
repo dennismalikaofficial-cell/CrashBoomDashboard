@@ -68,6 +68,7 @@ for k, v in {
     "bridge_schedule": None,
     "bridge_today_name": datetime.now().strftime("%A"),
     "last_payload": None,
+    "cfg_hydrated": False,
     "cfg_auto_mode": False,
     "cfg_use_schedule": False,
     "cfg_max_syms": 3,
@@ -92,7 +93,49 @@ def pill_html(label: str, is_on: bool, detail: str = "") -> str:
     return f'<span class="{cls}">{icon} {label}: {state_txt}</span>'
 
 
-def fetch_status(bridge_url: str, bridge_secret: str, symbols: list[str], timeframe: str, use_sched: bool, timeout: int):
+def hydrate_from_payload(payload: dict, force: bool = False):
+    if not payload or payload.get("status") != "connected":
+        return
+    if st.session_state.get("cfg_hydrated") and not force:
+        return
+
+    if "auto_mode" in payload:
+        st.session_state["cfg_auto_mode"] = bool(payload["auto_mode"])
+    if "use_daily_schedule" in payload:
+        st.session_state["cfg_use_schedule"] = bool(payload["use_daily_schedule"])
+    if "max_concurrent_symbols" in payload:
+        st.session_state["cfg_max_syms"] = int(payload["max_concurrent_symbols"])
+    if "std_sl_enabled" in payload:
+        st.session_state["cfg_std_sl_on"] = bool(payload["std_sl_enabled"])
+    if "std_sl_dollars" in payload:
+        st.session_state["cfg_std_sl_usd"] = float(payload["std_sl_dollars"])
+    if "alt_sl_enabled" in payload:
+        st.session_state["cfg_alt_sl_on"] = bool(payload["alt_sl_enabled"])
+    if "alt_sl_dollars" in payload:
+        st.session_state["cfg_alt_sl_usd"] = float(payload["alt_sl_dollars"])
+    if "manual_tp_enabled" in payload:
+        st.session_state["cfg_tp_on"] = bool(payload["manual_tp_enabled"])
+    if "tp_dollars" in payload:
+        st.session_state["cfg_tp_usd"] = float(payload["tp_dollars"])
+    if payload.get("timeframe"):
+        st.session_state["cfg_timeframe"] = payload["timeframe"]
+    if "lot" in payload:
+        st.session_state["cfg_lot"] = float(payload["lot"])
+    if payload.get("active_symbols") and not st.session_state.get("cfg_use_schedule"):
+        st.session_state["cfg_symbols"] = list(payload["active_symbols"])
+
+    st.session_state["cfg_hydrated"] = True
+
+
+def fetch_status(
+    bridge_url: str,
+    bridge_secret: str,
+    symbols: list[str],
+    timeframe: str,
+    use_sched: bool,
+    timeout: int,
+    force_hydrate: bool = False,
+):
     r = requests.get(
         f"{bridge_url.rstrip('/')}/status",
         params={
@@ -109,6 +152,7 @@ def fetch_status(bridge_url: str, bridge_secret: str, symbols: list[str], timefr
     if payload.get("today_name"):
         st.session_state["bridge_today_name"] = payload["today_name"]
     st.session_state["last_payload"] = payload
+    hydrate_from_payload(payload, force=force_hydrate)
     return payload
 
 
@@ -204,6 +248,15 @@ with st.sidebar:
         if st.button("Apply Symbol / Schedule Settings", use_container_width=True):
             try:
                 res = push_mode_settings(bridge_url, bridge_secret, resolved_syms, req_timeout)
+                fetch_status(
+                    bridge_url,
+                    bridge_secret,
+                    resolved_syms,
+                    st.session_state["cfg_timeframe"],
+                    st.session_state["cfg_use_schedule"],
+                    req_timeout,
+                    force_hydrate=True,
+                )
                 st.success(f"Applied ({res.get('status', 'ok')})")
             except Exception as exc:
                 st.error(f"Failed: {exc}")
@@ -272,6 +325,15 @@ with st.sidebar:
         if st.button("Apply Execution & SL/TP", use_container_width=True):
             try:
                 res = push_mode_settings(bridge_url, bridge_secret, resolved_syms, req_timeout)
+                fetch_status(
+                    bridge_url,
+                    bridge_secret,
+                    resolved_syms,
+                    st.session_state["cfg_timeframe"],
+                    st.session_state["cfg_use_schedule"],
+                    req_timeout,
+                    force_hydrate=True,
+                )
                 st.success(f"Saved ({res.get('status', 'ok')})")
             except Exception as exc:
                 st.error(f"Failed: {exc}")
@@ -322,18 +384,34 @@ with st.sidebar:
 # ===================== MAIN CLEAN DASHBOARD =====================
 st.title("⚡ Malika Synthetic Edge")
 
+if st.session_state["last_payload"] is None:
+    try:
+        fetch_status(
+            bridge_url,
+            bridge_secret,
+            resolved_syms,
+            st.session_state["cfg_timeframe"],
+            st.session_state["cfg_use_schedule"],
+            req_timeout,
+        )
+    except Exception:
+        pass
+
 payload = st.session_state.get("last_payload")
 live_auto = payload.get("auto_mode", st.session_state["cfg_auto_mode"]) if payload else st.session_state["cfg_auto_mode"]
 live_sched = payload.get("use_daily_schedule", st.session_state["cfg_use_schedule"]) if payload else st.session_state["cfg_use_schedule"]
+live_std_sl = payload.get("std_sl_enabled", st.session_state["cfg_std_sl_on"]) if payload else st.session_state["cfg_std_sl_on"]
+live_alt_sl = payload.get("alt_sl_enabled", st.session_state["cfg_alt_sl_on"]) if payload else st.session_state["cfg_alt_sl_on"]
+live_tp = payload.get("manual_tp_enabled", st.session_state["cfg_tp_on"]) if payload else st.session_state["cfg_tp_on"]
 
-# Always-visible ON/OFF status pills reflecting live state
+# Always-visible ON/OFF status pills reflecting live bridge state
 pills_markup = (
     '<div class="status-strip">'
     + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"])
     + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""))
-    + pill_html("0.20 Group SL", bool(st.session_state["cfg_std_sl_on"]), f"${st.session_state['cfg_std_sl_usd']:.2f}")
-    + pill_html("Min-Lot SL", bool(st.session_state["cfg_alt_sl_on"]), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
-    + pill_html("Manual TP", bool(st.session_state["cfg_tp_on"]), f"${st.session_state['cfg_tp_usd']:.2f}")
+    + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}")
+    + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
+    + pill_html("Manual TP", bool(live_tp), f"${st.session_state['cfg_tp_usd']:.2f}")
     + f'<span class="pill-off">📌 Active: {", ".join(resolved_syms)}</span>'
     + "</div>"
 )
@@ -345,7 +423,7 @@ with b1:
 with b2:
     refresh_clicked = st.button("🔄 Refresh Now", use_container_width=True)
 
-if sync_clicked or refresh_clicked or st.session_state["last_payload"] is None:
+if sync_clicked or refresh_clicked:
     try:
         fetch_status(
             bridge_url,
