@@ -32,38 +32,6 @@ ALL_SYMBOLS = [
 
 st.set_page_config(page_title="Malika Synthetic Edge Dashboard", layout="wide")
 
-st.markdown(
-    """
-    <style>
-    .status-strip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 14px;
-    }
-    .pill-on {
-        background: #e6f6ec;
-        color: #137333;
-        border: 1px solid #a8dab5;
-        padding: 4px 11px;
-        border-radius: 999px;
-        font-size: 0.84rem;
-        font-weight: 600;
-    }
-    .pill-off {
-        background: #f1f3f4;
-        color: #5f6368;
-        border: 1px solid #dadce0;
-        padding: 4px 11px;
-        border-radius: 999px;
-        font-size: 0.84rem;
-        font-weight: 600;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 for k, v in {
     "bridge_schedule": None,
     "bridge_today_name": datetime.now().strftime("%A"),
@@ -94,10 +62,10 @@ for k, v in {
         st.session_state[k] = v
 
 
-def pill_html(label: str, is_on: bool, detail: str = "") -> str:
+def pill_html(label: str, is_on: bool, detail: str = "", accent: str = "emerald") -> str:
     state_txt = f"ON{f' ({detail})' if detail else ''}" if is_on else "OFF"
-    cls = "pill-on" if is_on else "pill-off"
-    icon = "🟢" if is_on else "⚪"
+    cls = f"pill-on-{accent}" if is_on else "pill-off"
+    icon = "⚡" if (is_on and accent == "amber") else ("🟢" if is_on else "⚪")
     return f'<span class="{cls}">{icon} {label}: {state_txt}</span>'
 
 
@@ -472,9 +440,7 @@ with st.sidebar:
     auto_refresh = st.toggle("🔄 Auto-Refresh (3s)", value=False)
 
 
-# ===================== MAIN CLEAN DASHBOARD =====================
-st.title("⚡ Malika Synthetic Edge")
-
+# ===================== MAIN DYNAMIC DASHBOARD =====================
 if st.session_state["last_payload"] is None:
     try:
         fetch_status(
@@ -501,19 +467,94 @@ live_std_sl = payload.get("std_sl_enabled", st.session_state["cfg_std_sl_on"]) i
 live_alt_sl = payload.get("alt_sl_enabled", st.session_state["cfg_alt_sl_on"]) if payload else st.session_state["cfg_alt_sl_on"]
 live_tp = payload.get("manual_tp_enabled", st.session_state["cfg_tp_on"]) if payload else st.session_state["cfg_tp_on"]
 
+# Dynamic mood palette: vibrant emerald/amber when Auto Spike is live, crisp cyan/slate on standby
+hero_grad = (
+    "linear-gradient(120deg, #064e3b 0%, #0f766e 52%, #b45309 100%)"
+    if live_auto
+    else "linear-gradient(120deg, #0f172a 0%, #1e3a8a 55%, #0e7490 100%)"
+)
+border_glow = "#34d399" if live_auto else "#38bdf8"
+
+st.markdown(
+    f"""
+    <style>
+    .hero-banner {{
+        background: {hero_grad};
+        border: 1px solid {border_glow};
+        border-radius: 14px;
+        padding: 16px 20px;
+        color: #ffffff;
+        margin-bottom: 12px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+    }}
+    .hero-title {{
+        font-size: 1.65rem;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: 0.2px;
+    }}
+    .hero-sub {{
+        font-size: 0.88rem;
+        opacity: 0.92;
+        margin-top: 4px;
+    }}
+    .status-strip {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+    }}
+    .pill-on-emerald {{
+        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        color: #065f46;
+        border: 1px solid #34d399;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+    }}
+    .pill-on-amber {{
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        color: #92400e;
+        border: 1px solid #f59e0b;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+    }}
+    .pill-off {{
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+        padding: 4px 11px;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 600;
+    }}
+    </style>
+    <div class="hero-banner">
+        <div class="hero-title">⚡ Malika Synthetic Edge</div>
+        <div class="hero-sub">
+            {"AUTO ENGINE LIVE — Scanning entries, scaling tiers & locking profits dynamically" if live_auto else "STANDBY COMMAND DECK — Telemetry & protection guards ready"}
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 sess_detail = f"{live_sess_label} {'ACTIVE' if live_sess_active else 'PAUSED'}"
 
 pills_markup = (
     '<div class="status-strip">'
-    + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"])
-    + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""))
-    + pill_html("Session", bool(live_sess), sess_detail)
-    + pill_html("Rec Lot", bool(live_rec_lot), "Capital Tier")
-    + pill_html("Rec SL/TP", bool(live_rec_sl_tp), "Bot ATR")
-    + pill_html("Moving SL", bool(live_trail_sl), f"Start ${st.session_state['cfg_trail_start_usd']:.2f}")
-    + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}")
-    + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
-    + pill_html("Manual TP", bool(live_tp), f"${st.session_state['cfg_tp_usd']:.2f}")
+    + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"], accent="amber")
+    + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""), accent="emerald")
+    + pill_html("Session", bool(live_sess), sess_detail, accent="emerald")
+    + pill_html("Rec Lot", bool(live_rec_lot), "Capital Tier", accent="emerald")
+    + pill_html("Rec SL/TP", bool(live_rec_sl_tp), "Bot ATR", accent="emerald")
+    + pill_html("Moving SL", bool(live_trail_sl), f"Start ${st.session_state['cfg_trail_start_usd']:.2f}", accent="amber")
+    + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}", accent="emerald")
+    + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}", accent="emerald")
+    + pill_html("Manual TP", bool(live_tp), f"${st.session_state['cfg_tp_usd']:.2f}", accent="emerald")
     + f'<span class="pill-off">📌 Active: {", ".join(resolved_syms)}</span>'
     + "</div>"
 )
