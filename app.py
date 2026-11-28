@@ -72,6 +72,7 @@ for k, v in {
     "cfg_auto_mode": False,
     "cfg_use_schedule": False,
     "cfg_use_rec_sl_tp": False,
+    "cfg_use_rec_lot": False,
     "cfg_max_syms": 3,
     "cfg_symbols": ["Boom 1000 Index", "Crash 1000 Index", "Step Index"],
     "cfg_timeframe": "M1",
@@ -106,6 +107,8 @@ def hydrate_from_payload(payload: dict, force: bool = False):
         st.session_state["cfg_use_schedule"] = bool(payload["use_daily_schedule"])
     if "use_recommended_sl_tp" in payload:
         st.session_state["cfg_use_rec_sl_tp"] = bool(payload["use_recommended_sl_tp"])
+    if "use_recommended_lot" in payload:
+        st.session_state["cfg_use_rec_lot"] = bool(payload["use_recommended_lot"])
     if "max_concurrent_symbols" in payload:
         st.session_state["cfg_max_syms"] = int(payload["max_concurrent_symbols"])
     if "std_sl_enabled" in payload:
@@ -167,6 +170,7 @@ def push_mode_settings(bridge_url: str, bridge_secret: str, active_symbols: list
             "auto_mode": bool(st.session_state["cfg_auto_mode"]),
             "use_daily_schedule": bool(st.session_state["cfg_use_schedule"]),
             "use_recommended_sl_tp": bool(st.session_state["cfg_use_rec_sl_tp"]),
+            "use_recommended_lot": bool(st.session_state["cfg_use_rec_lot"]),
             "max_concurrent_symbols": int(st.session_state["cfg_max_syms"]),
             "std_sl_enabled": bool(st.session_state["cfg_std_sl_on"]),
             "std_sl_dollars": float(st.session_state["cfg_std_sl_usd"]),
@@ -288,6 +292,12 @@ with st.sidebar:
                 step=0.01,
             )
 
+        st.session_state["cfg_use_rec_lot"] = st.toggle(
+            "Allow Recommended Lot (Capital Tiers)",
+            value=st.session_state["cfg_use_rec_lot"],
+            help="ON: uses capital-tier recommended lot per symbol group. OFF: uses your manual Base Lot above.",
+        )
+
         st.divider()
         st.session_state["cfg_use_rec_sl_tp"] = st.toggle(
             "Allow Recommended SL / TP (Bot ATR)",
@@ -367,6 +377,7 @@ with st.sidebar:
                         "action": order_side,
                         "lot": float(order_lot),
                         "use_recommended_sl_tp": bool(st.session_state["cfg_use_rec_sl_tp"]),
+                        "use_recommended_lot": bool(st.session_state["cfg_use_rec_lot"]),
                         "std_sl_enabled": bool(st.session_state["cfg_std_sl_on"]),
                         "std_sl_dollars": float(st.session_state["cfg_std_sl_usd"]),
                         "alt_sl_enabled": bool(st.session_state["cfg_alt_sl_on"]),
@@ -415,6 +426,7 @@ if st.session_state["last_payload"] is None:
 payload = st.session_state.get("last_payload")
 live_auto = payload.get("auto_mode", st.session_state["cfg_auto_mode"]) if payload else st.session_state["cfg_auto_mode"]
 live_sched = payload.get("use_daily_schedule", st.session_state["cfg_use_schedule"]) if payload else st.session_state["cfg_use_schedule"]
+live_rec_lot = payload.get("use_recommended_lot", st.session_state["cfg_use_rec_lot"]) if payload else st.session_state["cfg_use_rec_lot"]
 live_rec_sl_tp = payload.get("use_recommended_sl_tp", st.session_state["cfg_use_rec_sl_tp"]) if payload else st.session_state["cfg_use_rec_sl_tp"]
 live_std_sl = payload.get("std_sl_enabled", st.session_state["cfg_std_sl_on"]) if payload else st.session_state["cfg_std_sl_on"]
 live_alt_sl = payload.get("alt_sl_enabled", st.session_state["cfg_alt_sl_on"]) if payload else st.session_state["cfg_alt_sl_on"]
@@ -425,6 +437,7 @@ pills_markup = (
     '<div class="status-strip">'
     + pill_html("Auto Spike", bool(live_auto), st.session_state["cfg_timeframe"])
     + pill_html("Timetable", bool(live_sched), st.session_state.get("bridge_today_name", ""))
+    + pill_html("Rec Lot", bool(live_rec_lot), "Capital Tier")
     + pill_html("Rec SL/TP", bool(live_rec_sl_tp), "Bot ATR")
     + pill_html("0.20 Group SL", bool(live_std_sl), f"${st.session_state['cfg_std_sl_usd']:.2f}")
     + pill_html("Min-Lot SL", bool(live_alt_sl), f"${st.session_state['cfg_alt_sl_usd']:.2f}")
@@ -484,6 +497,7 @@ if payload:
                         "Rec SL": f"{info.get('rec_sl_price')} (~${info.get('rec_sl_usd', 0.0):.2f})",
                         "Rec TP": f"{info.get('rec_tp_price')} (~${info.get('rec_tp_usd', 0.0):.2f})",
                         "Environment": info.get("spike_environment"),
+                        "Rec Lot": f"{info.get('rec_lot')} ({info.get('lot_tier', '')})",
                         "Lot": info.get("effective_lot"),
                     }
                     for sym, info in telem.items()
